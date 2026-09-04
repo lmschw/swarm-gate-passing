@@ -28,6 +28,8 @@ def main(argv=None):
     parser.add_argument("--gate-x", type=float, default=None,
                          help="Place a physical gate at this arena-frame x (requires a map).")
     parser.add_argument("--gate-opening-width", type=float, default=config.GATE_OPENING_WIDTH_M)
+    parser.add_argument("--post-gate-distance", type=float, default=config.GATE_POST_GATE_DISTANCE_M,
+                         help="How far past the gate the success/finish line sits (see optimize.py).")
     parser.add_argument("--seed", type=int, default=config.HEBBIAN_DEFAULT_SEED)
     parser.add_argument("--n-agents", type=int, default=config.HEBBIAN_N_AGENTS)
     parser.add_argument("--wind-grid", type=int, default=None)
@@ -63,6 +65,7 @@ def main(argv=None):
     if gradient_sensor is not None and args.gate_x is not None:
         gate = Gate.centered_on_path(gradient_sensor, args.gate_x, args.gate_opening_width,
                                       config.X_RANGE, config.Y_RANGE)
+        finish_x = args.gate_x - args.post_gate_distance
 
     result = simulate_hebbian_episode(
         rules, seed=args.seed, n_agents=args.n_agents, wind_enabled=args.wind_enabled,
@@ -76,17 +79,21 @@ def main(argv=None):
         extent = [config.X_RANGE[0], config.X_RANGE[1], config.Y_RANGE[0], config.Y_RANGE[1]]
         ax.imshow(gradient_sensor.map, cmap="gray", origin="upper", extent=extent, alpha=0.6)
     if gate is not None:
-        ax.plot([gate.x_arena, gate.x_arena], [config.Y_RANGE[0], gate.y_lo_arena], color="red", linewidth=3)
+        ax.plot([gate.x_arena, gate.x_arena], [config.Y_RANGE[0], gate.y_lo_arena], color="red", linewidth=3,
+                label="gate")
         ax.plot([gate.x_arena, gate.x_arena], [gate.y_hi_arena, config.Y_RANGE[1]], color="red", linewidth=3)
-    elif finish_x is not None:
-        ax.axvline(finish_x, color="red", linestyle="--", linewidth=1.5, label="finish line")
+    if finish_x is not None:
+        ax.axvline(finish_x, color="orange", linestyle="--", linewidth=1.5, label="finish line")
     for i in range(positions.shape[1]):
         ax.plot(positions[:, i, 0], positions[:, i, 1], linewidth=1)
     ax.scatter(positions[-1, :, 0], positions[-1, :, 1], c="blue", s=20, zorder=3, label="final position")
     ax.set_xlabel("X [m]")
     ax.set_ylabel("Y [m]")
+    pgc = result.post_gate_cohesion_dist
+    pgc_str = f"{pgc:.2f}m" if pgc is not None else "n/a"
     ax.set_title(f"dist={result.dist_travelled:.2f}  path_dev={result.path_deviation_m:.2f}m  "
-                 f"speed={result.mean_speed:.3f}m/s  success={bool(result.success)}")
+                 f"speed={result.mean_speed:.3f}m/s  success={bool(result.success)}\n"
+                 f"post_gate_cohesion={pgc_str}")
     ax.legend(loc="lower right")
     fig.savefig(args.output, dpi=150)
     print(f"Saved {args.output}\n{result}")

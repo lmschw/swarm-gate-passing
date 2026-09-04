@@ -192,9 +192,23 @@ GATE_OPENING_WIDTH_M = 1.0
 GATE_COLLISION_WEIGHT = 250.0     # same convention/scale as save_battery_avoid_all's collision_w
 GATE_WALL_COL_MULT = 3.0          # gate-barrier hits are counted together with arena-wall hits
 GATE_PATH_DEVIATION_WEIGHT = 2.0  # eff -= mean_path_deviation_m / this
-GATE_COHESION_WEIGHT = 5.0        # eff -= cohesion_dist / this (mean pairwise inter-agent distance)
+GATE_COHESION_WEIGHT = 5.0        # eff -= cohesion_dist / this (mean pairwise inter-agent distance,
+                                   # averaged over the WHOLE episode)
 GATE_SPEED_WEIGHT = 0.02          # eff += mean_speed_mps / this
 GATE_SUCCESS_BONUS = 20.0         # eff += this iff EVERY agent crossed the finish line
+# The finish line ("success") sits this far past the LAST gate, not at it -- a gate can
+# physically scatter the swarm as individuals squeeze through separately, so requiring
+# them to keep moving together for a bit further is what actually tests (and rewards)
+# regrouping, rather than crediting "everyone got through" the instant they're all
+# individually clear of the barrier. Only applies to "gate_passing" (no gate exists in
+# "follow_gradient_no_gate", so its finish line sits at the sampled x directly).
+GATE_POST_GATE_DISTANCE_M = 1.5
+GATE_POST_GATE_COHESION_WEIGHT = 5.0   # eff -= post_gate_cohesion_dist / this (gate_passing only;
+                                       # mean pairwise distance measured ONLY once the swarm is
+                                       # past the last gate, i.e. specifically the regrouping phase --
+                                       # distinct from GATE_COHESION_WEIGHT's whole-episode average,
+                                       # so it's possible to see the two diverge: e.g. tight in transit
+                                       # but poor at regrouping, or vice versa)
 # Domain randomization: each simulated episode samples one wavelength (all stages)
 # and, in "gate_passing" only, one finish-line/gate placement -- so the evolved
 # genome doesn't just memorize a single layout. Placements are chosen as fractions
@@ -254,6 +268,7 @@ HEBBIAN_STAGE_FITNESS_WEIGHTS = {
         "include_inter_robot_collision": True,
         "path_deviation_w": GATE_PATH_DEVIATION_WEIGHT, "cohesion_w": GATE_COHESION_WEIGHT,
         "speed_w": GATE_SPEED_WEIGHT, "success_bonus": GATE_SUCCESS_BONUS,
+        "post_gate_cohesion_w": GATE_POST_GATE_COHESION_WEIGHT,
     },
 }
 

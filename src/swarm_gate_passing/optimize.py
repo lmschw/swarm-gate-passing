@@ -69,8 +69,10 @@ class EvalConfig:
     freq_choices: Tuple[float, ...] = ()       # domain-randomized wavelength choices
     gate_enabled: bool = False
     n_gates: int = 1                           # gates evenly spaced along the track when gate_enabled
-    finish_x_choices: Tuple[float, ...] = ()   # domain-randomized finish-line/gate-x choices
+    finish_x_choices: Tuple[float, ...] = ()   # domain-randomized gate-x choices (gate_enabled) or
+                                                # finish-line choices directly (not gate_enabled)
     gate_opening_width: float = config.GATE_OPENING_WIDTH_M
+    post_gate_distance: float = config.GATE_POST_GATE_DISTANCE_M
 
 
 def _make_episode_environment(cfg: EvalConfig, rng: np.random.Generator):
@@ -97,10 +99,18 @@ def _make_episode_environment(cfg: EvalConfig, rng: np.random.Generator):
     gates = None
     finish_x = None
     if gradient_sensor is not None and cfg.finish_x_choices:
-        finish_x = float(rng.choice(cfg.finish_x_choices))
+        gate_x = float(rng.choice(cfg.finish_x_choices))
         if cfg.gate_enabled:
-            gates = evenly_spaced_gates(gradient_sensor, cfg.n_gates, finish_x, cfg.gate_opening_width,
+            gates = evenly_spaced_gates(gradient_sensor, cfg.n_gates, gate_x, cfg.gate_opening_width,
                                          config.X_RANGE, config.Y_RANGE)
+            # Success is measured some distance PAST the last gate, not at it -- a gate can
+            # physically scatter the swarm as agents squeeze through individually, so this is
+            # what actually requires (and rewards) regrouping rather than crediting "everyone's
+            # individually clear of the barrier" the instant that happens. Travel is in -x, so
+            # "past" means further negative.
+            finish_x = gate_x - cfg.post_gate_distance
+        else:
+            finish_x = gate_x
 
     return gradient_sensor, gates, finish_x
 
@@ -178,8 +188,8 @@ def run_stage(stage, x0, plotter, popsize, maxiter, cfg_kwargs, output_dir, name
 
 def train_one_seed(seed, output_dir, stages, popsize, maxiter, n_agents, n_repeats,
                     battery, wind_grid, no_battery_sensor, gradient_map, sensor_mode,
-                    freq_choices, gate_x_choices, gate_opening_width, n_gates, n_workers,
-                    init_genome_path=None):
+                    freq_choices, gate_x_choices, gate_opening_width, n_gates, post_gate_distance,
+                    n_workers, init_genome_path=None):
     os.makedirs(output_dir, exist_ok=True)
     np.random.seed(seed)
     name_suffix = "_nosensor" if no_battery_sensor else ""
@@ -209,6 +219,7 @@ def train_one_seed(seed, output_dir, stages, popsize, maxiter, n_agents, n_repea
             gradient_map_path=gradient_map if stage == "follow_gradient_path" else None,
             freq_choices=this_freq_choices, gate_enabled=gate_enabled, n_gates=n_gates,
             finish_x_choices=this_gate_x_choices, gate_opening_width=gate_opening_width,
+            post_gate_distance=post_gate_distance,
         )
         genome = run_stage(stage, genome, plotter, popsize, maxiter, cfg_kwargs, output_dir,
                             name_suffix, n_workers)
@@ -247,8 +258,12 @@ def build_arg_parser():
     parser.add_argument("--gate-opening-width", type=float, default=config.GATE_OPENING_WIDTH_M)
     parser.add_argument("--n-gates", type=int, default=1,
                          help="Number of gates evenly spaced along the track (from the spawn area "
-                              "to the randomly-chosen finish line) in the 'gate_passing' stage. "
+                              "to the randomly-chosen gate placement) in the 'gate_passing' stage. "
                               "1 (default) reproduces the original single-gate behavior exactly.")
+    parser.add_argument("--post-gate-distance", type=float, default=config.GATE_POST_GATE_DISTANCE_M,
+                         help="How far past the LAST gate (arena meters, 'gate_passing' stage only) "
+                              "the success/finish line sits -- requires the swarm to keep traveling "
+                              "together after the gate, not just individually clear it.")
     parser.add_argument("--init-genome", default=None, metavar="PATH")
     parser.add_argument("--workers", type=int, default=None,
                          help="Process-pool size for parallel candidate evaluation "
@@ -264,8 +279,8 @@ def main(argv=None):
         train_one_seed(seed, output_dir, args.stages, args.popsize, args.maxiter, args.n_agents,
                         args.n_repeats, args.battery, args.wind_grid, args.no_battery_sensor,
                         args.gradient_map, args.sensor_mode, args.path_freq_choices,
-                        args.gate_x_choices, args.gate_opening_width, args.n_gates, n_workers,
-                        init_genome_path=args.init_genome)
+                        args.gate_x_choices, args.gate_opening_width, args.n_gates,
+                        args.post_gate_distance, n_workers, init_genome_path=args.init_genome)
 
     if args.seeds is not None:
         seeds = args.seeds if len(args.seeds) > 0 else list(config.HEBBIAN_BATCH_SEEDS)

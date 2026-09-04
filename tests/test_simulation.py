@@ -148,6 +148,37 @@ def test_multi_gate_episode_blocks_and_reports_success_consistently():
     assert np.isfinite(eff)
 
 
+def test_post_gate_cohesion_is_none_when_swarm_never_clears_last_gate():
+    grid = render_path_map("sine_curve", 10.0, 10.0, path_kwargs={"freq": 2.0})
+    sensor = GradientSensor(grid, world_size_x=10.0, world_size_y=10.0, noise_magnitude=0.0)
+    # gate placed far away and barely-opened battery budget: swarm should never reach it.
+    gates = evenly_spaced_gates(sensor, n_gates=1, finish_x=-4.5, opening_width_m=0.3,
+                                 x_range=config.X_RANGE, y_range=config.Y_RANGE)
+    rules = unflatten_abcd(_random_genome(seed=5))
+    result = simulate_hebbian_episode(
+        rules, seed=13, n_agents=3, wind_enabled=False, max_battery=0.5, min_battery=0.5,
+        gradient_sensor=sensor, gates=gates)
+    assert result.post_gate_cohesion_dist is None
+
+
+def test_post_gate_cohesion_is_tracked_once_swarm_clears_gate():
+    grid = render_path_map("sine_curve", 10.0, 10.0, path_kwargs={"freq": 2.0})
+    sensor = GradientSensor(grid, world_size_x=10.0, world_size_y=10.0, noise_magnitude=0.0)
+    # a "gate" placed beyond the arena's own X_RANGE upper bound (5.0): every agent's x is
+    # trivially already below it from the very first step (the wall clamp alone guarantees
+    # this), so post-gate cohesion should be tracked from step 1 regardless of genome behavior.
+    gates = evenly_spaced_gates(sensor, n_gates=1, finish_x=10.0, opening_width_m=10.0,
+                                 x_range=config.X_RANGE, y_range=config.Y_RANGE)
+    rules = unflatten_abcd(_random_genome(seed=6))
+    result = simulate_hebbian_episode(
+        rules, seed=14, n_agents=3, wind_enabled=False, max_battery=3.0, min_battery=3.0,
+        gradient_sensor=sensor, gates=gates, finish_x=-100.0)  # unreachable finish -> full episode runs
+    assert result.post_gate_cohesion_dist is not None
+    assert result.post_gate_cohesion_dist >= 0.0
+    eff = stage_fitness(result, "gate_passing")
+    assert np.isfinite(eff)
+
+
 def test_success_flag_true_only_when_finish_line_crossed():
     rules = unflatten_abcd(_random_genome(seed=3))
     # finish_x far behind spawn (0,0): essentially unreachable in a short/no-wind episode with
