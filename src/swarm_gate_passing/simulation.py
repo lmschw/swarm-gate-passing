@@ -1,24 +1,48 @@
-"""Full episode simulation for the Hebbian ABCD controller, extended with
-gradient-map path sensing.
+"""Full episode simulation for the Hebbian ABCD controller.
 
-The physics/control loop (wind, drag, battery, collision bookkeeping) and the
-overall structure are vendored from energy_efficient_flocking's
-ants26_replication/experiment/simulation_hebbian.py, itself a 1:1 port of
-simulation_free_global_mod_2.m's main loop. What's new for this project:
-each step, if a `gradient_sensor` (environment.sensing.GradientSensor) is
-supplied, every agent's world position is sampled for a light-intensity
-reading fed into the 11th sensor input (see sensor_model.py), and the episode's
-mean reading is returned as `path_alignment` for use by stage_fitness's new
-"follow_gradient_path" term.
+The physics/control loop (wind, drag, battery, collision bookkeeping) is
+vendored from energy_efficient_flocking's ants26_replication/experiment/
+simulation_hebbian.py, itself a 1:1 port of simulation_free_global_mod_2.m's
+main loop. Layered on top of that:
+
+  - gradient-map light sensing (see environment/sensing.py) and a mean
+    "path_alignment" reward, from combining in volcano_gradient's sensing.
+  - a choice of sensor module (sensor_model.py's idealized quadrant
+    distance/bearing sensor, encoding neighbor POSITIONS, or
+    sensor_model_thymio.py's raw 7-channel IR proximity sensor).
+  - an optional physical Gate (environment/gate.py) placed at a finish line,
+    plus the metrics needed to train crossing it: geometric path deviation,
+    mean speed, and an all-agents-crossed success flag.
 """
+from dataclasses import dataclass
+from typing import Optional
+
 import numpy as np
 
 from . import config
-from .sensor_model import get_sensor_data
+from . import sensor_model as sensor_model_quadrant
+from . import sensor_model_thymio
 from .hebbian_controller import init_weights, hebbian_step
 from .wind_physics import (
     wrap_to_pi, RayTraceCircularRobots, dragforce, batterydrainage, _spawn_agents,
 )
+
+_SENSOR_MODULES = {"quadrant": sensor_model_quadrant, "thymio": sensor_model_thymio}
+
+
+@dataclass
+class EpisodeResult:
+    dist_travelled: float
+    average_batt: float
+    collision_time: float
+    wall_collision_time: float       # includes gate-barrier hits, see _move()
+    cohesion_dist: float
+    proximity_penalty: float
+    path_alignment: float            # mean sensed light reading, rescaled to [0, 100]
+    path_deviation_m: float          # mean geometric distance to the path centerline [m]
+    mean_speed: float                # mean realized linear speed [m/s]
+    success: float                   # 1.0 iff every agent had crossed finish_x by episode end
+    telemetry: Optional[dict] = None
 
 
 def _proximity_penalty(D, iu):
@@ -43,10 +67,20 @@ def _world_frame_position(agents):
     return world_x, world_y
 
 
-def _move(agents, vel, dt, n_agents, min_dist, walls):
+def _move(agents, vel, dt, n_agents, min_dist, walls, gates=None):
     """Kinematic integration + collision bookkeeping, mirroring move() in
     simulation_free_global_mod_2.m. Tracks inter-robot and wall collisions
-    separately so stage_fitness can weight/use them independently."""
+    separately so stage_fitness can weight/use them independently.
+
+    gates: optional list of environment.gate.Gate (see environment.gate.
+    evenly_spaced_gates), checked in descending-x (travel) order. Any agent
+    whose step would cross a gate's x outside its opening is stopped right at
+    that barrier instead, and counted as a wall hit (same weight/meaning as an
+    arena-boundary hit). Since a single step's displacement is tiny relative to
+    gate spacing, an agent crossing more than one gate in the same step is not
+    expected in practice, but gates are still processed in travel order (the
+    order evenly_spaced_gates returns them in) so the FIRST barrier an agent
+    would actually reach takes precedence if it ever did happen."""
     vel_actual = np.zeros((n_agents, 3))
     vel_actual[:, 0:2] = vel
     vel_actual[:, 2] = agents[:, 2]
@@ -60,6 +94,23 @@ def _move(agents, vel, dt, n_agents, min_dist, walls):
     agents[:, 1] += dy
     agents[:, 2] = wrap_to_pi(agents[:, 2] + vel[:, 1] * dt)
 
+    gate_hits = 0
+    if gates:
+        old_x = agents_old[:, 0]
+        already_blocked = np.zeros(n_agents, dtype=bool)
+        for gate in sorted(gates, key=lambda g: -g.x_arena):
+            new_x = agents[:, 0]
+            crossed = ((old_x - gate.x_arena) * (new_x - gate.x_arena)) < 0.0
+            candidates = crossed & ~already_blocked
+            if not np.any(candidates):
+                continue
+            blocked = candidates & np.array([gate.blocks(y) for y in agents[:, 1]])
+            if np.any(blocked):
+                sign = np.sign(old_x[blocked] - gate.x_arena)
+                agents[blocked, 0] = gate.x_arena + 1e-3 * sign
+                gate_hits += int(np.count_nonzero(blocked))
+                already_blocked |= blocked
+
     agents_xy = agents[:, 0:2]
     D = np.linalg.norm(agents_xy[:, None, :] - agents_xy[None, :, :], axis=-1)
     close_agents = (D < min_dist) & (~np.eye(n_agents, dtype=bool))
@@ -71,7 +122,7 @@ def _move(agents, vel, dt, n_agents, min_dist, walls):
     wall_margin = config.ROBOT_RAD * config.WALL_MARGIN_FACTOR
     wall_hits = int(np.sum((agents[:, 0] > walls[1] - wall_margin) |
                            (agents[:, 1] > walls[2] - wall_margin) |
-                           (agents[:, 1] < walls[3] + wall_margin)))
+                           (agents[:, 1] < walls[3] + wall_margin))) + gate_hits
 
     min_x = np.min(agents[:, 0])
     max_x = min(np.max(agents[:, 0]), min_x + config.WIND_TRACKING_MAX_SPAN)
@@ -95,23 +146,44 @@ def _move(agents, vel, dt, n_agents, min_dist, walls):
 
 def simulate_hebbian_episode(abcd_rules, seed=None, n_agents=None, wind_enabled=True,
                               max_battery=None, min_battery=None, nx=None, ny=None,
-                              use_battery_sensor=True, gradient_sensor=None,
+                              use_battery_sensor=True, sensor_mode="quadrant",
+                              gradient_sensor=None, gates=None, finish_x=None,
                               record_trajectory=False, record_battery=False):
     """Runs one full episode with the Hebbian ABCD controller, until any agent's
-    battery depletes.
+    battery depletes or (if finish_x is set) every agent has crossed finish_x.
 
     abcd_rules: dict from hebbian_controller.unflatten_abcd(), shared by every agent.
-    gradient_sensor: optional environment.sensing.GradientSensor; when given, each
-        agent's position is sampled every step for a light-intensity reading fed
-        into the 11th sensor input, and the episode-mean reading (rescaled to
-        [0, 100]) is returned as `path_alignment`. None disables gradient sensing
-        (the 11th input is always fed a neutral 0.0) and `path_alignment` is 0.0.
+    sensor_mode: "quadrant" (idealized distance/bearing, encodes neighbor
+        positions) or "thymio" (raw 7-channel IR proximity) -- see config.py.
+    gradient_sensor: optional environment.sensing.GradientSensor; when given,
+        each agent's position is sampled every step for a light-intensity
+        reading fed into the sensor's last input, and also used to compute
+        `path_deviation_m` (the agent's geometric distance from the path
+        centerline). None disables both (path metrics are 0.0).
+    gates: optional list of environment.gate.Gate (see
+        environment.gate.evenly_spaced_gates) -- physical barriers that only
+        let agents through their opening (see _move()). If given and finish_x
+        is None, the LAST gate's x (gates[-1].x_arena, the furthest along the
+        track) is used as the finish line -- passing it requires having
+        already passed every earlier gate, since each physically blocks
+        crossing outside its own opening.
+    finish_x: optional arena-frame x; `success` is 1.0 iff every agent's x has
+        crossed below this by the end of the episode (episode ends early, as
+        soon as that happens, to save compute). None disables both the early
+        exit and success tracking (`success` is always 0.0).
 
-    Returns (dist_travelled, average_batt, collision_time, wall_collision_time,
-    cohesion_dist, proximity_penalty, path_alignment[, telemetry]).
+    Returns an EpisodeResult (telemetry populated only if record_trajectory/
+    record_battery is set).
     """
     if seed is not None:
         np.random.seed(seed)
+
+    if finish_x is None and gates:
+        finish_x = gates[-1].x_arena
+
+    sensor_module = _SENSOR_MODULES[sensor_mode]
+    n_inputs = config.n_inputs_for_sensor_mode(sensor_mode)
+    battery_idx = config.battery_row(n_inputs)
 
     dt = config.DT
     n_agents = n_agents if n_agents is not None else config.HEBBIAN_N_AGENTS
@@ -134,30 +206,36 @@ def simulate_hebbian_episode(abcd_rules, seed=None, n_agents=None, wind_enabled=
     min_dist_initial = config.SPAWN_MIN_DIST_SLACK + 2.0 * robot_rad
 
     agents = _spawn_agents(n_agents, midpoint, spawn_square_size, min_dist_initial, max_battery, min_battery)
-    weights = [init_weights() for _ in range(n_agents)]
+    weights = [init_weights(n_inputs) for _ in range(n_agents)]
 
     pair_collision_counter = 0
     wall_collision_counter = 0
     cohesion_dist_sum = 0.0
-    cohesion_dist_steps = 0
     path_alignment_sum = 0.0
+    path_deviation_sum = 0.0
+    speed_sum = 0.0
+    steps = 0
     batteryEmpty = False
+    success = False
     positions_log = [agents[:, 0:2].copy()] if record_trajectory else None
     battery_log = [agents[:, 3].copy()] if record_battery else None
     vel = np.zeros((n_agents, 2))
 
-    while not batteryEmpty:
+    while not (batteryEmpty or success):
         if gradient_sensor is not None:
             world_x, world_y = _world_frame_position(agents)
             light_for_controller = gradient_sensor.read(world_x, world_y, add_noise=True)
             light_clean = gradient_sensor.read(world_x, world_y, add_noise=False)
             path_alignment_sum += float(np.mean(light_clean))
+            centerline_world_y = gradient_sensor.centerline_y(world_x)
+            centerline_arena_y = centerline_world_y + config.Y_RANGE[0]
+            path_deviation_sum += float(np.mean(np.abs(agents[:, 1] - centerline_arena_y)))
         else:
             light_for_controller = None
 
-        sensor_inputs = get_sensor_data(agents, light_intensity=light_for_controller)
+        sensor_inputs = sensor_module.get_sensor_data(agents, light_intensity=light_for_controller)
         if not use_battery_sensor:
-            sensor_inputs[8, :] = 0.0
+            sensor_inputs[battery_idx, :] = 0.0
         for i in range(n_agents):
             w1, w2, w3 = weights[i]
             v_i, w_i, w1n, w2n, w3n = hebbian_step(sensor_inputs[:, i], w1, w2, w3, abcd_rules)
@@ -166,11 +244,12 @@ def simulate_hebbian_episode(abcd_rules, seed=None, n_agents=None, wind_enabled=
             weights[i] = (w1n, w2n, w3n)
 
         vel_actual, agents, xRange, pair_hits, wall_hits, mean_pairwise_dist, _ = _move(
-            agents, vel, dt, n_agents, min_dist, walls)
+            agents, vel, dt, n_agents, min_dist, walls, gates=gates)
         pair_collision_counter += pair_hits
         wall_collision_counter += wall_hits
         cohesion_dist_sum += mean_pairwise_dist
-        cohesion_dist_steps += 1
+        speed_sum += float(np.mean(vel_actual[:, 0]))
+        steps += 1
         if record_trajectory:
             positions_log.append(agents[:, 0:2].copy())
 
@@ -184,53 +263,87 @@ def simulate_hebbian_episode(abcd_rules, seed=None, n_agents=None, wind_enabled=
             battery_log.append(agents[:, 3].copy())
 
         batteryEmpty = np.any(agents[:, 3] <= 0.0)
+        if finish_x is not None:
+            success = bool(np.all(agents[:, 0] < finish_x))
 
     average_batt = np.mean(agents[:, 3])
     dist_travelled = -np.mean(agents[:, 0])
     collision_time = pair_collision_counter * dt
     wall_collision_time = wall_collision_counter * dt
-    cohesion_dist = cohesion_dist_sum / cohesion_dist_steps if cohesion_dist_steps else 0.0
-    path_alignment = (100.0 * path_alignment_sum / 255.0 / cohesion_dist_steps) if cohesion_dist_steps else 0.0
+    cohesion_dist = cohesion_dist_sum / steps if steps else 0.0
+    path_alignment = (100.0 * path_alignment_sum / 255.0 / steps) if steps else 0.0
+    path_deviation_m = path_deviation_sum / steps if steps else 0.0
+    mean_speed = speed_sum / steps if steps else 0.0
     proximity_penalty = 0.0  # tracked but unweighted by default; see _proximity_penalty
 
+    telemetry = None
     if record_trajectory or record_battery:
         telemetry = {
             "positions": np.array(positions_log) if record_trajectory else None,
             "battery": np.array(battery_log) if record_battery else None,
         }
-        return (dist_travelled, average_batt, collision_time, wall_collision_time, cohesion_dist,
-                proximity_penalty, path_alignment, telemetry)
-    return dist_travelled, average_batt, collision_time, wall_collision_time, cohesion_dist, proximity_penalty, path_alignment
+
+    return EpisodeResult(
+        dist_travelled=dist_travelled, average_batt=average_batt, collision_time=collision_time,
+        wall_collision_time=wall_collision_time, cohesion_dist=cohesion_dist,
+        proximity_penalty=proximity_penalty, path_alignment=path_alignment,
+        path_deviation_m=path_deviation_m, mean_speed=mean_speed, success=float(success),
+        telemetry=telemetry)
 
 
-def stage_fitness(dist_travelled, average_batt, collision_time, wall_collision_time, cohesion_dist,
-                   proximity_penalty, path_alignment, stage):
+def stage_fitness(result: EpisodeResult, stage: str) -> float:
     """Per-stage fitness formula:
 
-    eff = HEBBIAN_EFF_DISTANCE_WEIGHT*dist + avg_batt/battery_w
+    eff = HEBBIAN_EFF_DISTANCE_WEIGHT*dist
+          + avg_batt/battery_w
           - (wall_col_mult*wall_col_time [+ collision_time]) / collision_w
           - cohesion_dist / cohesion_w
           - proximity_penalty / proximity_w
+          - path_deviation_m / path_deviation_w
           + path_alignment / path_w
+          + mean_speed / speed_w
+          + success_bonus [if success]
 
-    path_alignment is the episode-mean gradient-map light reading, rescaled to
-    [0, 100] (see simulate_hebbian_episode) so it's calibrated on the same scale
-    as average_batt/battery_w rather than the raw [0, 255] map intensity.
+    All terms are optional (config.HEBBIAN_STAGE_FITNESS_WEIGHTS[stage].get(...)
+    returning None disables that term entirely).
     """
-    battery_w, collision_w, wall_col_mult, include_inter_robot, cohesion_w, proximity_w, path_w = \
-        config.HEBBIAN_STAGE_FITNESS_WEIGHTS[stage]
-    eff = config.HEBBIAN_EFF_DISTANCE_WEIGHT * dist_travelled
+    weights = config.HEBBIAN_STAGE_FITNESS_WEIGHTS[stage]
+    eff = config.HEBBIAN_EFF_DISTANCE_WEIGHT * result.dist_travelled
+
+    battery_w = weights.get("battery_w")
     if battery_w is not None:
-        eff += average_batt / battery_w
+        eff += result.average_batt / battery_w
+
+    collision_w = weights.get("collision_w")
     if collision_w is not None:
-        penalty = wall_col_mult * wall_collision_time
-        if include_inter_robot:
-            penalty += collision_time
+        wall_col_mult = weights.get("wall_col_mult", 1.0)
+        penalty = wall_col_mult * result.wall_collision_time
+        if weights.get("include_inter_robot_collision", False):
+            penalty += result.collision_time
         eff -= penalty / collision_w
+
+    cohesion_w = weights.get("cohesion_w")
     if cohesion_w is not None:
-        eff -= cohesion_dist / cohesion_w
+        eff -= result.cohesion_dist / cohesion_w
+
+    proximity_w = weights.get("proximity_w")
     if proximity_w is not None:
-        eff -= proximity_penalty / proximity_w
+        eff -= result.proximity_penalty / proximity_w
+
+    path_deviation_w = weights.get("path_deviation_w")
+    if path_deviation_w is not None:
+        eff -= result.path_deviation_m / path_deviation_w
+
+    path_w = weights.get("path_w")
     if path_w is not None:
-        eff += path_alignment / path_w
+        eff += result.path_alignment / path_w
+
+    speed_w = weights.get("speed_w")
+    if speed_w is not None:
+        eff += result.mean_speed / speed_w
+
+    success_bonus = weights.get("success_bonus")
+    if success_bonus is not None and result.success:
+        eff += success_bonus
+
     return eff

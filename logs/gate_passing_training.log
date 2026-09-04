@@ -1,0 +1,8 @@
+=== JOB 1: thymio sensor, 10 agents ===
+Fr 4. Sep 21:02:03 CEST 2026
+🚀 stages=['follow_gradient_no_gate', 'gate_passing'], sensor_mode=thymio, popsize=30, maxiter=100, n_agents=10, n_repeats=3, workers=22
+
+======================================================================
+🧬 STAGE: follow_gradient_no_gate  ({'sensor_mode': 'thymio', 'n_agents': 10, 'n_repeats': 3, 'max_battery': None, 'min_battery': None, 'nx': None, 'ny': None, 'use_battery_sensor': True, 'wind_enabled': False, 'gradient_map_path': None, 'freq_choices': (2.0, 4.0, 6.0), 'gate_enabled': False, 'finish_x_choices': (-2.5, -3.5, -4.5), 'gate_opening_width': 1.0})
+======================================================================
+(15_w,30)-aCMA-ES (mu_w=8.6,w_1=20%) in dimension 880 (seed=637153, Fri Sep  4 21:02:04 2026)

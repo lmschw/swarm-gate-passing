@@ -2,26 +2,45 @@
 
 Vendored and extended from energy_efficient_flocking's ants26_replication/
 experiment/optimize_hebbian.py. The staged curriculum and CMA-ES loop are
-unchanged; what's new is the `follow_gradient_path` stage and the
---gradient-map CLI flag that constructs a GradientSensor (ported from
-volcano_gradient, see environment/sensing.py) and threads it into every
-candidate's simulation.
+unchanged in spirit; two things are new:
 
-Four sequential stages of increasing task complexity:
-  1. walk_left                  -- wind disabled, fitness = distance only
-  2. save_battery_avoid_wall    -- wind enabled, + battery term, + wall-collision penalty
-  3. save_battery_avoid_all     -- wind enabled, + battery term, + wall AND inter-robot collision penalty
-  4. follow_gradient_path       -- stage 3's terms, + reward for staying on a gradient-mapped path
+  - --sensor-mode {quadrant,thymio} and --gradient-map / --path-freq-choices /
+    --gate-x-choices / --gate-opening-width, threading sensor choice and
+    domain-randomized gradient maps/gate placements into every candidate's
+    simulation (see EvalConfig/evaluate_candidate below).
+  - candidate evaluation is parallelized across a process pool (each CMA-ES
+    candidate's simulate_hebbian_episode calls are independent), since this is
+    by far the largest lever on wall-clock training time and the vendored
+    version evaluated every candidate serially.
 
-Each stage runs CMA-ES (population 30, 100 generations, sigma0=0.3) with every
-candidate evaluated over 3 random seeds, taking the MEDIAN efficiency as its
-fitness. Stage 1 starts from a fresh ABCD_init sampled uniformly from [-5, 5];
-each later stage starts from the previous stage's best genome.
+Six stages across two curricula (each --stages run starts its own fresh genome
+unless --init-genome is given; curricula don't chain into each other):
+
+  Energy-efficiency curriculum (Table 2 + the gradient-path stage added when
+  this project combined in volcano_gradient's sensing):
+    1. walk_left                  -- wind disabled, fitness = distance only
+    2. save_battery_avoid_wall    -- + battery term, + wall-collision penalty
+    3. save_battery_avoid_all     -- + inter-robot collision penalty
+    4. follow_gradient_path       -- + reward for staying on a fixed gradient map
+
+  Gate-passing curriculum (this project's second combination -- see
+  config.py's GATE_* constants and simulation.EpisodeResult/stage_fitness):
+    1. follow_gradient_no_gate    -- domain-randomized wavelength, no barrier
+    2. gate_passing               -- + a physical gate at a randomized placement,
+                                      + success bonus for all agents crossing it
+
+Each stage runs CMA-ES (population 30, 100 generations, sigma0=0.3 by default)
+with every candidate evaluated over 3 random seeds, taking the MEDIAN
+efficiency as its fitness.
 """
 import argparse
 import json
 import os
 import sys
+import time
+from concurrent.futures import ProcessPoolExecutor
+from dataclasses import dataclass
+from typing import Optional, Tuple
 
 import cma
 import numpy as np
@@ -30,69 +49,92 @@ from . import config
 from .hebbian_controller import unflatten_abcd
 from .simulation import simulate_hebbian_episode, stage_fitness
 from .fitness_plot import FitnessPlotter
-from .environment import GradientSensor
-
-current_candidate = 0
-total_candidates = 0
-active_stage = None
-active_n_agents = config.HEBBIAN_N_AGENTS
-active_n_repeats = config.HEBBIAN_N_REPEATS
-active_seed_base = 0
-active_max_battery = None
-active_min_battery = None
-active_nx = None
-active_ny = None
-active_use_battery_sensor = True
-active_gradient_sensor = None
+from .environment import GradientSensor, evenly_spaced_gates, render_path_map
 
 
-def fitness_wrapper(genome):
-    global current_candidate
-    current_candidate += 1
-    sys.stdout.write(f"\r   ↳ Evaluating Swarm Candidate: {current_candidate}/{total_candidates} ...")
-    sys.stdout.flush()
+@dataclass(frozen=True)
+class EvalConfig:
+    stage: str
+    sensor_mode: str
+    n_agents: int
+    n_repeats: int
+    seed_base: int
+    max_battery: Optional[float]
+    min_battery: Optional[float]
+    nx: Optional[int]
+    ny: Optional[int]
+    use_battery_sensor: bool
+    wind_enabled: bool
+    gradient_map_path: Optional[str] = None   # fixed map (follow_gradient_path stage)
+    freq_choices: Tuple[float, ...] = ()       # domain-randomized wavelength choices
+    gate_enabled: bool = False
+    n_gates: int = 1                           # gates evenly spaced along the track when gate_enabled
+    finish_x_choices: Tuple[float, ...] = ()   # domain-randomized finish-line/gate-x choices
+    gate_opening_width: float = config.GATE_OPENING_WIDTH_M
 
-    rules = unflatten_abcd(genome)
-    wind_enabled = config.HEBBIAN_STAGE_WIND_ENABLED[active_stage]
+
+def _make_episode_environment(cfg: EvalConfig, rng: np.random.Generator):
+    """Builds the (gradient_sensor, gates, finish_x) for one episode, applying
+    domain randomization when configured. A fresh map is rendered per call
+    (cheap -- a few ms at this resolution) rather than cached, so each repeat
+    can get an independently-sampled wavelength."""
+    world_w = config.X_RANGE[1] - config.X_RANGE[0]
+    world_h = config.Y_RANGE[1] - config.Y_RANGE[0]
+
+    gradient_sensor = None
+    if cfg.gradient_map_path is not None:
+        gradient_sensor = GradientSensor.from_png(cfg.gradient_map_path, world_w, world_h,
+                                                   noise_magnitude=config.GRADIENT_MAP_NOISE_MAGNITUDE)
+    elif cfg.freq_choices:
+        freq = float(rng.choice(cfg.freq_choices))
+        grid = render_path_map("sine_curve", world_w, world_h,
+                                meters_per_pixel=config.GRADIENT_MAP_METERS_PER_PIXEL,
+                                path_width_m=config.GRADIENT_DEFAULT_PATH_WIDTH_M,
+                                path_kwargs={"freq": freq})
+        gradient_sensor = GradientSensor(grid, world_w, world_h,
+                                          noise_magnitude=config.GRADIENT_MAP_NOISE_MAGNITUDE)
+
+    gates = None
+    finish_x = None
+    if gradient_sensor is not None and cfg.finish_x_choices:
+        finish_x = float(rng.choice(cfg.finish_x_choices))
+        if cfg.gate_enabled:
+            gates = evenly_spaced_gates(gradient_sensor, cfg.n_gates, finish_x, cfg.gate_opening_width,
+                                         config.X_RANGE, config.Y_RANGE)
+
+    return gradient_sensor, gates, finish_x
+
+
+def evaluate_candidate(genome, candidate_id, cfg: EvalConfig):
+    """Pure function of (genome, candidate_id, cfg) -- no module-level mutable
+    state -- so it's safe to run in a worker process. Returns -median(efficiency)
+    over cfg.n_repeats replicate episodes (CMA-ES minimizes)."""
+    n_inputs = config.n_inputs_for_sensor_mode(cfg.sensor_mode)
+    rules = unflatten_abcd(genome, n_inputs=n_inputs)
+    env_rng = np.random.default_rng(cfg.seed_base + candidate_id)
 
     effs = []
-    for r in range(active_n_repeats):
-        seed = active_seed_base + current_candidate * 1000 + r  # distinct seed per repeat, per candidate
+    for r in range(cfg.n_repeats):
+        seed = cfg.seed_base + candidate_id * 1000 + r
         try:
-            dist, batt, ct, wct, coh, prox, path = simulate_hebbian_episode(
-                rules, seed=seed, n_agents=active_n_agents, wind_enabled=wind_enabled,
-                max_battery=active_max_battery, min_battery=active_min_battery,
-                nx=active_nx, ny=active_ny, use_battery_sensor=active_use_battery_sensor,
-                gradient_sensor=active_gradient_sensor)
-            effs.append(stage_fitness(dist, batt, ct, wct, coh, prox, path, active_stage))
+            gradient_sensor, gate, finish_x = _make_episode_environment(cfg, env_rng)
+            result = simulate_hebbian_episode(
+                rules, seed=seed, n_agents=cfg.n_agents, wind_enabled=cfg.wind_enabled,
+                max_battery=cfg.max_battery, min_battery=cfg.min_battery,
+                nx=cfg.nx, ny=cfg.ny, use_battery_sensor=cfg.use_battery_sensor,
+                sensor_mode=cfg.sensor_mode, gradient_sensor=gradient_sensor,
+                gate=gate, finish_x=finish_x)
+            effs.append(stage_fitness(result, cfg.stage))
         except Exception as e:
-            print(f"\n⚠️  Candidate {current_candidate} repeat {r} failed "
+            print(f"\n⚠️  Candidate {candidate_id} repeat {r} failed "
                   f"({type(e).__name__}: {e}) -- treating as worst-case for this repeat")
             effs.append(-99999.0)
 
     return -float(np.median(effs))  # CMA-ES minimizes
 
 
-def run_stage(stage, x0, plotter, popsize, maxiter, n_agents, n_repeats, seed_base, output_dir,
-              max_battery, min_battery, nx, ny, use_battery_sensor, gradient_sensor, name_suffix):
-    global active_stage, total_candidates, active_n_agents, active_n_repeats, active_seed_base
-    global active_max_battery, active_min_battery, active_nx, active_ny, active_use_battery_sensor
-    global active_gradient_sensor
-
-    active_stage = stage
-    active_n_agents = n_agents
-    active_n_repeats = n_repeats
-    active_seed_base = seed_base
-    active_max_battery = max_battery
-    active_min_battery = min_battery
-    active_nx = nx
-    active_ny = ny
-    active_use_battery_sensor = use_battery_sensor
-    active_gradient_sensor = gradient_sensor
-    total_candidates = popsize
-
-    print(f"\n{'=' * 70}\n🧬 STAGE: {stage}  (wind_enabled={config.HEBBIAN_STAGE_WIND_ENABLED[stage]}, "
-          f"battery_sensor={use_battery_sensor}, gradient_map={'yes' if gradient_sensor else 'no'})\n{'=' * 70}")
+def run_stage(stage, x0, plotter, popsize, maxiter, cfg_kwargs, output_dir, name_suffix, n_workers):
+    print(f"\n{'=' * 70}\n🧬 STAGE: {stage}  ({cfg_kwargs})\n{'=' * 70}")
 
     es = cma.CMAEvolutionStrategy(x0, config.HEBBIAN_CMAES_SIGMA0, {
         'popsize': popsize,
@@ -103,17 +145,22 @@ def run_stage(stage, x0, plotter, popsize, maxiter, n_agents, n_repeats, seed_ba
 
     gen = 0
     fitness_history = []
-    while not es.stop():
-        gen += 1
-        current_candidate_reset()
-        solutions = es.ask()
-        fitness_values = [fitness_wrapper(sol) for sol in solutions]
-        es.tell(solutions, fitness_values)
-        plotter.update(gen, fitness_values)
-        fitness_history.append(float(min(fitness_values)))
-        sys.stdout.write("\r")
-        print(f"✅ Gen {gen:03d}/{maxiter} | Best Loss (neg eff): {min(fitness_values):.4f}")
+    t_stage_start = time.time()
+    with ProcessPoolExecutor(max_workers=n_workers) as pool:
+        while not es.stop():
+            gen += 1
+            t_gen_start = time.time()
+            solutions = es.ask()
+            cfg = EvalConfig(stage=stage, seed_base=(gen - 1) * popsize, **cfg_kwargs)
+            futures = [pool.submit(evaluate_candidate, sol, i, cfg) for i, sol in enumerate(solutions)]
+            fitness_values = [f.result() for f in futures]
+            es.tell(solutions, fitness_values)
+            plotter.update(gen, fitness_values)
+            fitness_history.append(float(min(fitness_values)))
+            print(f"✅ Gen {gen:03d}/{maxiter} | Best Loss (neg eff): {min(fitness_values):.4f} "
+                  f"| {time.time() - t_gen_start:.1f}s")
 
+    print(f"   (stage wall-clock: {time.time() - t_stage_start:.1f}s)")
     best_genome = es.result[0]
     best_loss = float(es.result[1])
 
@@ -121,119 +168,116 @@ def run_stage(stage, x0, plotter, popsize, maxiter, n_agents, n_repeats, seed_ba
     history_name = f"hebbian_{stage}{name_suffix}_history.json"
     np.save(os.path.join(output_dir, genome_name), best_genome)
     with open(os.path.join(output_dir, history_name), "w") as f:
-        json.dump({"stage": stage, "battery_sensor": use_battery_sensor, "best_loss": best_loss,
-                   "best_efficiency": -best_loss, "loss_curve": fitness_history,
-                   "genome": best_genome.tolist(),
-                   "n_agents": n_agents, "max_battery": max_battery, "min_battery": min_battery,
-                   "wind_grid_nx": nx, "wind_grid_ny": ny}, f, indent=2)
+        json.dump({"stage": stage, "best_loss": best_loss, "best_efficiency": -best_loss,
+                   "loss_curve": fitness_history, "genome": best_genome.tolist(),
+                   "cfg": {k: v for k, v in cfg_kwargs.items()}}, f, indent=2)
 
     print(f"💾 Stage '{stage}' complete. Best efficiency: {-best_loss:.4f}. Saved {genome_name}")
     return best_genome
 
 
-def current_candidate_reset():
-    global current_candidate
-    current_candidate = 0
-
-
 def train_one_seed(seed, output_dir, stages, popsize, maxiter, n_agents, n_repeats,
-                    battery, wind_grid, no_battery_sensor, gradient_map, init_genome_path=None):
-    """The full staged curriculum for a single seed. gradient_map: optional path
-    to a PNG (see environment.path_maps) -- used only by stages whose
-    HEBBIAN_STAGE_FITNESS_WEIGHTS entry sets a path_w (currently
-    follow_gradient_path); harmless to pass for other stages since they ignore
-    path_alignment entirely."""
+                    battery, wind_grid, no_battery_sensor, gradient_map, sensor_mode,
+                    freq_choices, gate_x_choices, gate_opening_width, n_workers,
+                    init_genome_path=None):
     os.makedirs(output_dir, exist_ok=True)
     np.random.seed(seed)
     name_suffix = "_nosensor" if no_battery_sensor else ""
+    if sensor_mode != "quadrant":
+        name_suffix += f"_{sensor_mode}"
     plotter = FitnessPlotter(path=os.path.join(output_dir, f"hebbian_fitness_curve{name_suffix}.png"))
 
-    gradient_sensor = None
-    if gradient_map is not None:
-        world_size_x = config.X_RANGE[1] - config.X_RANGE[0]
-        world_size_y = config.Y_RANGE[1] - config.Y_RANGE[0]
-        gradient_sensor = GradientSensor.from_png(gradient_map, world_size_x, world_size_y,
-                                                   noise_magnitude=config.GRADIENT_MAP_NOISE_MAGNITUDE)
+    n_inputs = config.n_inputs_for_sensor_mode(sensor_mode)
+    n_abcd = config.n_abcd_for(n_inputs)
 
     if init_genome_path is not None:
         genome = np.load(init_genome_path)
         print(f"↳ Seeding '{stages[0]}' from existing genome '{init_genome_path}' "
               f"(instead of a fresh random one).")
     else:
-        genome = np.random.uniform(config.HEBBIAN_ABCD_BOUNDS[0], config.HEBBIAN_ABCD_BOUNDS[1],
-                                    config.HEBBIAN_N_ABCD)
+        genome = np.random.uniform(config.HEBBIAN_ABCD_BOUNDS[0], config.HEBBIAN_ABCD_BOUNDS[1], n_abcd)
+
     for stage in stages:
-        genome = run_stage(stage, genome, plotter, popsize, maxiter, n_agents,
-                            n_repeats, seed, output_dir,
-                            max_battery=battery, min_battery=battery,
-                            nx=wind_grid, ny=wind_grid,
-                            use_battery_sensor=not no_battery_sensor,
-                            gradient_sensor=gradient_sensor,
-                            name_suffix=name_suffix)
+        wind_enabled = config.HEBBIAN_STAGE_WIND_ENABLED[stage]
+        gate_enabled = stage == "gate_passing"
+        this_freq_choices = tuple(freq_choices) if stage in ("follow_gradient_no_gate", "gate_passing") else ()
+        this_gate_x_choices = tuple(gate_x_choices) if this_freq_choices else ()
+        cfg_kwargs = dict(
+            sensor_mode=sensor_mode, n_agents=n_agents, n_repeats=n_repeats,
+            max_battery=battery, min_battery=battery, nx=wind_grid, ny=wind_grid,
+            use_battery_sensor=not no_battery_sensor, wind_enabled=wind_enabled,
+            gradient_map_path=gradient_map if stage == "follow_gradient_path" else None,
+            freq_choices=this_freq_choices, gate_enabled=gate_enabled,
+            finish_x_choices=this_gate_x_choices, gate_opening_width=gate_opening_width,
+        )
+        genome = run_stage(stage, genome, plotter, popsize, maxiter, cfg_kwargs, output_dir,
+                            name_suffix, n_workers)
     plotter.close()
 
 
 def build_arg_parser():
     parser = argparse.ArgumentParser(description="Staged CMA-ES training of the Hebbian ABCD controller.")
-    parser.add_argument("--popsize", type=int, default=config.HEBBIAN_CMAES_POPSIZE,
-                         help=f"CMA-ES population size (default: {config.HEBBIAN_CMAES_POPSIZE}).")
-    parser.add_argument("--maxiter", type=int, default=config.HEBBIAN_CMAES_GEN_MAX,
-                         help=f"Generations per stage (default: {config.HEBBIAN_CMAES_GEN_MAX}).")
-    parser.add_argument("--n-agents", type=int, default=config.HEBBIAN_N_AGENTS,
-                         help=f"Swarm size (default: {config.HEBBIAN_N_AGENTS}).")
-    parser.add_argument("--n-repeats", type=int, default=config.HEBBIAN_N_REPEATS,
-                         help=f"Random-seed repeats per candidate, fitness=median (default: {config.HEBBIAN_N_REPEATS}).")
-    parser.add_argument("--seed", type=int, default=0,
-                         help="Base seed for reproducibility (single-run mode; ignored if --seeds is given).")
+    parser.add_argument("--popsize", type=int, default=config.HEBBIAN_CMAES_POPSIZE)
+    parser.add_argument("--maxiter", type=int, default=config.HEBBIAN_CMAES_GEN_MAX)
+    parser.add_argument("--n-agents", type=int, default=config.HEBBIAN_N_AGENTS)
+    parser.add_argument("--n-repeats", type=int, default=config.HEBBIAN_N_REPEATS)
+    parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--seeds", type=int, nargs="*", default=None,
                          help="Run the ENTIRE staged curriculum independently for each of these seeds, "
                               "each into its own '<output-dir>/seed_<seed>/' subdirectory. Pass with no "
                               f"values to use this project's canonical seeds ({config.HEBBIAN_BATCH_SEEDS}).")
-    parser.add_argument("--output-dir", default="hebbian_results", help="Where to save genomes/histories.")
+    parser.add_argument("--output-dir", default="hebbian_results")
     parser.add_argument("--stages", nargs="+", default=list(config.HEBBIAN_STAGES),
-                         choices=list(config.HEBBIAN_STAGES),
-                         help="Which stages to run, in order (default: all four).")
-    parser.add_argument("--battery", type=float, default=None,
-                         help=f"Starting battery for all agents (default: {config.HEBBIAN_MAX_BATTERY}).")
-    parser.add_argument("--wind-grid", type=int, default=None,
-                         help=f"Wind grid resolution, both axes (default: {config.HEBBIAN_NX}). "
-                              "The single biggest cost lever: the wake-marching loop is O(Nx) per step.")
-    parser.add_argument("--no-battery-sensor", action="store_true",
-                         help="Evolve a baseline that cannot sense its own battery level at all.")
+                         choices=list(config.HEBBIAN_STAGES))
+    parser.add_argument("--battery", type=float, default=None)
+    parser.add_argument("--wind-grid", type=int, default=None)
+    parser.add_argument("--no-battery-sensor", action="store_true")
+    parser.add_argument("--sensor-mode", default="quadrant", choices=list(config.SENSOR_MODES),
+                         help="'quadrant': idealized distance/bearing per neighbor (positions). "
+                              "'thymio': raw 7-channel IR proximity, no neighbor identity/bearing.")
     parser.add_argument("--gradient-map", default=None, metavar="PATH",
-                         help="PNG gradient/path map (see environment.generate_default_map_set or "
-                              "scripts/generate_maps.py) to sense via the 11th input and reward "
-                              "following in the 'follow_gradient_path' stage.")
-    parser.add_argument("--init-genome", default=None, metavar="PATH",
-                         help="Seed the FIRST stage in --stages from this existing genome .npy file "
-                              "instead of a fresh random one.")
+                         help="Fixed PNG gradient/path map for the 'follow_gradient_path' stage. "
+                              "Ignored by every other stage.")
+    parser.add_argument("--path-freq-choices", type=float, nargs="+", default=list(config.GATE_FREQ_CHOICES),
+                         help="Sine-curve wavelengths (as frequency) to sample per episode in "
+                              "'follow_gradient_no_gate'/'gate_passing' (domain randomization).")
+    parser.add_argument("--gate-x-choices", type=float, nargs="+", default=list(config.GATE_FINISH_X_CHOICES),
+                         help="Arena-frame x placements to sample per episode for the finish "
+                              "line ('follow_gradient_no_gate') / gate ('gate_passing').")
+    parser.add_argument("--gate-opening-width", type=float, default=config.GATE_OPENING_WIDTH_M)
+    parser.add_argument("--init-genome", default=None, metavar="PATH")
+    parser.add_argument("--workers", type=int, default=None,
+                         help="Process-pool size for parallel candidate evaluation "
+                              "(default: min(popsize, cpu_count)).")
     return parser
 
 
 def main(argv=None):
     args = build_arg_parser().parse_args(argv)
+    n_workers = args.workers or min(args.popsize, os.cpu_count() or 1)
+
+    def _run(seed, output_dir):
+        train_one_seed(seed, output_dir, args.stages, args.popsize, args.maxiter, args.n_agents,
+                        args.n_repeats, args.battery, args.wind_grid, args.no_battery_sensor,
+                        args.gradient_map, args.sensor_mode, args.path_freq_choices,
+                        args.gate_x_choices, args.gate_opening_width, n_workers,
+                        init_genome_path=args.init_genome)
 
     if args.seeds is not None:
         seeds = args.seeds if len(args.seeds) > 0 else list(config.HEBBIAN_BATCH_SEEDS)
-        print(f"🚀 Launching {len(seeds)}-seed Hebbian ABCD training sweep: seeds={seeds}, "
-              f"stages={args.stages}, popsize={args.popsize}, maxiter={args.maxiter}, "
-              f"n_agents={args.n_agents}, n_repeats={args.n_repeats}, "
-              f"battery_sensor={not args.no_battery_sensor}, gradient_map={args.gradient_map}")
+        print(f"🚀 {len(seeds)}-seed sweep: seeds={seeds}, stages={args.stages}, "
+              f"sensor_mode={args.sensor_mode}, popsize={args.popsize}, maxiter={args.maxiter}, "
+              f"n_agents={args.n_agents}, n_repeats={args.n_repeats}, workers={n_workers}")
         for i, seed in enumerate(seeds):
             seed_dir = os.path.join(args.output_dir, f"seed_{seed}")
             print(f"\n{'#' * 70}\n### SEED {seed} ({i + 1}/{len(seeds)}) -> {seed_dir}/\n{'#' * 70}")
-            train_one_seed(seed, seed_dir, args.stages, args.popsize, args.maxiter, args.n_agents,
-                           args.n_repeats, args.battery, args.wind_grid, args.no_battery_sensor,
-                           args.gradient_map, init_genome_path=args.init_genome)
+            _run(seed, seed_dir)
         print(f"\n🎉 {len(seeds)}-seed sweep complete. Results in '{args.output_dir}/seed_<seed>/'.")
     else:
-        print(f"🚀 Launching staged Hebbian ABCD training: stages={args.stages}, "
-              f"popsize={args.popsize}, maxiter={args.maxiter}, n_agents={args.n_agents}, "
-              f"n_repeats={args.n_repeats}, battery_sensor={not args.no_battery_sensor}, "
-              f"gradient_map={args.gradient_map}")
-        train_one_seed(args.seed, args.output_dir, args.stages, args.popsize, args.maxiter,
-                       args.n_agents, args.n_repeats, args.battery, args.wind_grid,
-                       args.no_battery_sensor, args.gradient_map, init_genome_path=args.init_genome)
+        print(f"🚀 stages={args.stages}, sensor_mode={args.sensor_mode}, popsize={args.popsize}, "
+              f"maxiter={args.maxiter}, n_agents={args.n_agents}, n_repeats={args.n_repeats}, "
+              f"workers={n_workers}")
+        _run(args.seed, args.output_dir)
         print(f"\n🎉 Staged training complete. Results in '{args.output_dir}/'.")
 
 

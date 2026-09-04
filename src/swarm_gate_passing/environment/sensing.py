@@ -26,10 +26,25 @@ class GradientSensor:
         self.world_size_y = world_size_y
         self.noise_magnitude = noise_magnitude
         self._rows, self._cols = self.map.shape
+        # Precomputed once per map: the row (bright_on_path) / (dark_on_path) index
+        # of each column's most path-like pixel -- i.e. the rendered path's actual
+        # centerline, read directly off the map rather than re-derived from
+        # whatever path-function parameters generated it, so it's exact for any
+        # map (including hand-edited or non-formulaic ones). Used by centerline_y().
+        self._centerline_row_bright = np.argmax(self.map, axis=0)
+        self._centerline_row_dark = np.argmin(self.map, axis=0)
 
     @classmethod
     def from_png(cls, path, world_size_x, world_size_y, **kwargs):
         return cls(load_map(path), world_size_x, world_size_y, **kwargs)
+
+    def centerline_y(self, x, bright_on_path=True):
+        """Vectorized: for each world-frame x (scalar or array), returns the
+        world-frame y (meters, bottom-up) of the path centerline at that x."""
+        x = np.asarray(x, dtype=float)
+        col = np.clip(np.round(x / self.world_size_x * self._cols).astype(int), 0, self._cols - 1)
+        row = (self._centerline_row_bright if bright_on_path else self._centerline_row_dark)[col]
+        return self.world_size_y * (1.0 - (row + 0.5) / self._rows)
 
     def read(self, x, y, add_noise=True):
         """x, y: scalar or array of world-frame coordinates (meters). Returns

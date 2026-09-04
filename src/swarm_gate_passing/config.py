@@ -9,9 +9,15 @@ Combines two prior research codebases:
   - Gradient-map path sensing, ported from volcano_gradient's light-intensity
     sensor and path/map generator (see environment/).
 
-The new piece connecting them is the 11th sensor input (HEBBIAN_N_INPUTS below)
-and the "follow_gradient_path" curriculum stage -- see sensor_model.py and
-simulation.py.
+Two further pieces layer on top of that combination:
+  - A second sensor mode ("thymio"), a 7-channel raw IR proximity model ported
+    from ants26_replication/thymio_ir_variant/sensor_model.py, as an alternative
+    to the idealized quadrant distance/bearing sensor ("quadrant" mode, the
+    original default -- see sensor_model.py vs sensor_model_thymio.py).
+  - A physical gate barrier (environment/gate.py) placed across the arena with
+    its opening centered on the path, and a 2-stage curriculum
+    (follow_gradient_no_gate -> gate_passing) that trains a swarm to pass
+    through it -- see simulation.py's EpisodeResult/stage_fitness.
 """
 import math
 
@@ -79,12 +85,11 @@ HEBBIAN_DEFAULT_SEED = 42
 # Each robot runs a small MLP (ReLU, ReLU, tanh) updated online by a Hebbian rule;
 # the rule's coefficients (not the weights themselves) are what CMA-ES evolves,
 # shared by every agent in a swarm. See hebbian_controller.py, sensor_model.py,
-# simulation.py, optimize.py.
+# sensor_model_thymio.py, simulation.py, optimize.py.
 # =====================================================================================
 
-# --- Robot & sensing ---
-HEBBIAN_N_AGENTS = 20             # swarm size
-HEBBIAN_SENSING_RADIUS = 2.01     # R: neighbor detection radius [m]; also the "no neighbor" default distance
+HEBBIAN_N_AGENTS = 20             # default swarm size (overridden per run, e.g. --n-agents 10)
+HEBBIAN_SENSING_RADIUS = 2.01     # R: neighbor detection radius [m] for "quadrant" sensor mode
 HEBBIAN_LINEAR_VEL_MAX = 0.2      # m/s, tanh output #1 rescaled to [-this, this]
 HEBBIAN_ANGULAR_VEL_MAX = math.pi / 5  # rad/s, tanh output #2 rescaled to [-this, this]
 
@@ -95,26 +100,71 @@ HEBBIAN_NX = 200                   # wind grid resolution; lower to cut simulati
 HEBBIAN_NY = 200
 
 # --- Neural controller architecture ---
-# 4 quadrants x (distance, bearing) + battery + compass heading + gradient light
-# reading (the piece added by combining in volcano_gradient's sensing -- see
-# sensor_model.py and environment/sensing.py).
-HEBBIAN_N_INPUTS = 11
 HEBBIAN_N_HIDDEN = 10             # both hidden layers
 HEBBIAN_N_OUTPUTS = 2             # (v, w)
 HEBBIAN_LEARNING_RATE = 0.1       # mu in delta_w = mu*(A*ni*nj + B*ni + C*nj + D)
-# Weight-matrix shapes, in flatten/unflatten order: W1: N_INPUTS x N_HIDDEN,
-# W2: N_HIDDEN x N_HIDDEN, W3: N_HIDDEN x N_OUTPUTS. Randomly initialized each
-# episode using a uniform distribution in [-1, 1] for all three (not evolved --
-# only the ABCD Hebbian-rule coefficients are).
-HEBBIAN_WEIGHT_INIT_RANGE = 1.0
+HEBBIAN_WEIGHT_INIT_RANGE = 1.0   # NN weights (not the ABCD genome) initialized uniformly in [-this, this]
 
-# --- ABCD genotype ---
-# 4 coefficients (A, B, C, D) per NN weight, shared across all agents in a swarm:
-# 4 * (11*10 + 10*10 + 10*2) = 920 total parameters.
-HEBBIAN_N_ABCD = 4 * (HEBBIAN_N_INPUTS * HEBBIAN_N_HIDDEN + HEBBIAN_N_HIDDEN * HEBBIAN_N_HIDDEN
-                      + HEBBIAN_N_HIDDEN * HEBBIAN_N_OUTPUTS)
+# --- Sensor modes ---
+# "quadrant": 4 quadrants x (distance, bearing) + battery + heading + gradient light = 11
+#     inputs -- the idealized sensor used throughout ants26_replication's other
+#     variants (encodes each neighbor's relative POSITION: distance and bearing).
+# "thymio": 7 raw Thymio-II IR proximity readings (no neighbor identity/bearing,
+#     wall and neighbor reflectance indistinguishable) + battery + heading +
+#     gradient light = 10 inputs, ported from thymio_ir_variant/sensor_model.py.
+# Both put battery/heading/light in the same last-3 positions (see
+# BATTERY_ROW/HEADING_ROW/LIGHT_ROW below), so simulation.py can ablate/feed them
+# generically regardless of which sensor module is in use.
+SENSOR_MODES = ("quadrant", "thymio")
+
+
+def n_inputs_for_sensor_mode(sensor_mode):
+    if sensor_mode == "quadrant":
+        return 11
+    if sensor_mode == "thymio":
+        return 10
+    raise ValueError(f"unknown sensor_mode {sensor_mode!r}, choose from {SENSOR_MODES}")
+
+
+def battery_row(n_inputs):
+    return n_inputs - 3
+
+
+def heading_row(n_inputs):
+    return n_inputs - 2
+
+
+def light_row(n_inputs):
+    return n_inputs - 1
+
+
+def n_abcd_for(n_inputs, n_hidden=None, n_outputs=None):
+    """Genome length for a given input width: 4 ABCD coefficients per NN weight,
+    W1: n_inputs x n_hidden, W2: n_hidden x n_hidden, W3: n_hidden x n_outputs."""
+    n_hidden = n_hidden if n_hidden is not None else HEBBIAN_N_HIDDEN
+    n_outputs = n_outputs if n_outputs is not None else HEBBIAN_N_OUTPUTS
+    return 4 * (n_inputs * n_hidden + n_hidden * n_hidden + n_hidden * n_outputs)
+
+
+# Default ("quadrant") sizing -- kept as module constants for convenience/back-compat
+# (existing stages, tests, and the default CLI all target this sensor mode).
+HEBBIAN_N_INPUTS = n_inputs_for_sensor_mode("quadrant")   # 11
+HEBBIAN_N_ABCD = n_abcd_for(HEBBIAN_N_INPUTS)              # 920
+
 HEBBIAN_ABCD_INIT_RANGE = 5.0     # ABCD-rules initial mean sampled uniformly from [-this, this]
 HEBBIAN_ABCD_BOUNDS = [-5.0, 5.0]  # CMA-ES hard bounds
+
+# --- Real Thymio II IR proximity sensor geometry (prox.horizontal), "thymio" mode ---
+# Sourced from Webots' community-calibrated Thymio2.proto model, converting each of
+# the 7 DistanceSensor mount positions into a bearing angle; ordering matches
+# thymio_swarm_platform's prox.horizontal[0..6] (indices 0-4 front left-to-right,
+# 5-6 rear left/right; +angle = robot's own left).
+THYMIO_IR_ANGLES = (
+    0.6737, 0.3386, 0.0, -0.3386, -0.6737,   # front: left, front-left, center, front-right, right
+    2.3387, -2.3387,                          # rear: left, right
+)
+THYMIO_IR_HALF_APERTURE = math.radians(10.0)   # disclosed assumption, not a measured spec
+THYMIO_IR_RANGE = 0.12            # [m], surface gap (not center-to-center); effective range ~0-12cm
 
 # --- CMA-ES hyperparameters ---
 HEBBIAN_CMAES_POPSIZE = 30        # lambda
@@ -129,35 +179,85 @@ GRADIENT_MAP_METERS_PER_PIXEL = 0.05   # map resolution when generating maps siz
 GRADIENT_MAP_NOISE_MAGNITUDE = 0.5      # matches volcano_gradient's g_noise_mag uniform-noise sensor model
 GRADIENT_DEFAULT_PATH_WIDTH_M = 0.6     # default corridor width used by environment.generate_default_map_set
 
-# --- Staged curriculum ---
-# Stage 1 has no wind and rewards distance only, to avoid evolving the trivial strategy of
-# just riding the tailwind. Stage 2 turns on wind and adds battery + wall-collision terms.
-# Stage 3 adds a general inter-robot collision penalty on top of stage 2. Stage 4
-# (added by this project) keeps stage 3's terms and adds a reward for staying on a
-# gradient-mapped path, exercising the sensing added in environment/. Each stage's
-# CMA-ES run is seeded from the previous stage's best genome; stage 1 alone starts
-# from a fresh uniform-random ABCD_init.
-HEBBIAN_STAGES = ("walk_left", "save_battery_avoid_wall", "save_battery_avoid_all", "follow_gradient_path")
+# --- Gate-passing task ---
+# Physical barrier placed at the track's finish line, with its opening centered on
+# the path's actual rendered centerline (read directly off the map -- see
+# environment/gate.py -- so it's exact for any path shape/wavelength, not just
+# the sine-curve formula). GATE_WIND_ENABLED is off: energy/drafting is not part
+# of this task's fitness (see below), and skipping the O(Nx) wind ray-trace is
+# also the single biggest per-step cost lever, which matters a lot with domain
+# randomization run at scale.
+GATE_WIND_ENABLED = False
+GATE_OPENING_WIDTH_M = 1.0
+GATE_COLLISION_WEIGHT = 250.0     # same convention/scale as save_battery_avoid_all's collision_w
+GATE_WALL_COL_MULT = 3.0          # gate-barrier hits are counted together with arena-wall hits
+GATE_PATH_DEVIATION_WEIGHT = 2.0  # eff -= mean_path_deviation_m / this
+GATE_COHESION_WEIGHT = 5.0        # eff -= cohesion_dist / this (mean pairwise inter-agent distance)
+GATE_SPEED_WEIGHT = 0.02          # eff += mean_speed_mps / this
+GATE_SUCCESS_BONUS = 20.0         # eff += this iff EVERY agent crossed the finish line
+# Domain randomization: each simulated episode samples one wavelength (all stages)
+# and, in "gate_passing" only, one finish-line/gate placement -- so the evolved
+# genome doesn't just memorize a single layout. Placements are chosen as fractions
+# of the arena's travel distance from the spawn point (0, 0), not fixed absolute
+# positions, so they scale sensibly whatever the arena size.
+GATE_FREQ_CHOICES = (2.0, 4.0, 6.0)
+GATE_FINISH_X_CHOICES = (-2.5, -3.5, -4.5)
+
+# --- Staged curricula ---
+# The original energy-efficiency curriculum (Table 2) plus the gradient-path stage
+# added when this project combined in volcano_gradient's sensing, plus the
+# gate-passing curriculum added on top of that (see module docstring). Curricula
+# are independent -- "follow_gradient_no_gate"/"gate_passing" do not chain from
+# "save_battery_avoid_all"; each --stages run starts its own fresh genome unless
+# --init-genome is given.
+HEBBIAN_STAGES = (
+    "walk_left", "save_battery_avoid_wall", "save_battery_avoid_all", "follow_gradient_path",
+    "follow_gradient_no_gate", "gate_passing",
+)
 HEBBIAN_STAGE_WIND_ENABLED = {
     "walk_left": False,
     "save_battery_avoid_wall": True,
     "save_battery_avoid_all": True,
     "follow_gradient_path": True,
+    "follow_gradient_no_gate": GATE_WIND_ENABLED,
+    "gate_passing": GATE_WIND_ENABLED,
 }
-# Fitness weights per stage: eff = HEBBIAN_EFF_DISTANCE_WEIGHT*dist + batt/battery_w -
-# (collision_time + wall_col_mult*wall_collision_time) / collision_w - cohesion_dist /
-# cohesion_w - proximity_penalty / proximity_w + path_alignment / path_w. A weight of
-# None means that term is entirely absent. path_alignment is scaled to [0, 100] (see
-# simulation.py), so path_w's scale is calibrated against battery_w's (also a
-# [0, 100]-scaled term), not against the raw [0, 255] map intensity.
+# Per-stage fitness weights, all optional (a missing/None key means that term is
+# entirely absent). See simulation.stage_fitness for the full formula. Every term
+# beyond distance is a divisor against the named metric (battery/collision/
+# proximity/cohesion/path_deviation: penalties, i.e. eff -= metric/weight; battery/
+# path/speed: rewards, i.e. eff += metric/weight), except success_bonus, which is
+# a flat additive bonus, and HEBBIAN_EFF_DISTANCE_WEIGHT (below), a multiplier.
 HEBBIAN_STAGE_FITNESS_WEIGHTS = {
-    #                             battery_w   collision_w   wall_col_mult   include_inter_robot_collision   cohesion_w   proximity_w   path_w
-    "walk_left":                 (None,        None,         3.0,            False,                          None,        None,         None),
-    "save_battery_avoid_wall":   (5.0,         500.0,        3.0,            False,                          None,        None,         None),
-    "save_battery_avoid_all":    (5.0,         250.0,        3.0,            True,                           None,        None,         None),
-    "follow_gradient_path":      (5.0,         250.0,        3.0,            True,                           None,        None,         5.0),
+    "walk_left": {
+        "wall_col_mult": 3.0,
+    },
+    "save_battery_avoid_wall": {
+        "battery_w": 5.0, "collision_w": 500.0, "wall_col_mult": 3.0,
+    },
+    "save_battery_avoid_all": {
+        "battery_w": 5.0, "collision_w": 250.0, "wall_col_mult": 3.0,
+        "include_inter_robot_collision": True,
+    },
+    "follow_gradient_path": {
+        "battery_w": 5.0, "collision_w": 250.0, "wall_col_mult": 3.0,
+        "include_inter_robot_collision": True, "path_w": 5.0,
+    },
+    "follow_gradient_no_gate": {
+        "collision_w": GATE_COLLISION_WEIGHT, "wall_col_mult": GATE_WALL_COL_MULT,
+        "include_inter_robot_collision": True,
+        "path_deviation_w": GATE_PATH_DEVIATION_WEIGHT, "cohesion_w": GATE_COHESION_WEIGHT,
+        "speed_w": GATE_SPEED_WEIGHT, "success_bonus": GATE_SUCCESS_BONUS,
+    },
+    "gate_passing": {
+        "collision_w": GATE_COLLISION_WEIGHT, "wall_col_mult": GATE_WALL_COL_MULT,
+        "include_inter_robot_collision": True,
+        "path_deviation_w": GATE_PATH_DEVIATION_WEIGHT, "cohesion_w": GATE_COHESION_WEIGHT,
+        "speed_w": GATE_SPEED_WEIGHT, "success_bonus": GATE_SUCCESS_BONUS,
+    },
 }
 
-# Explicit distance weight -- without one, CMA-ES can cheaply preserve battery by
-# barely moving; this keeps distance-travelled dominant over battery preservation.
+# Explicit distance weight -- without one, CMA-ES can cheaply preserve battery/avoid
+# risk by barely moving; this keeps distance-travelled (progress toward/through the
+# gate) dominant.
 HEBBIAN_EFF_DISTANCE_WEIGHT = 16.0

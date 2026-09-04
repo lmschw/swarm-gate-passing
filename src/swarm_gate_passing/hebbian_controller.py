@@ -11,38 +11,48 @@ import numpy as np
 
 from . import config
 
-# Layer shapes, in flatten/unflatten order (matches hebbianStep.m's W1, W2, W3).
-_LAYER_SHAPES = (
-    ("1", (config.HEBBIAN_N_INPUTS, config.HEBBIAN_N_HIDDEN)),
-    ("2", (config.HEBBIAN_N_HIDDEN, config.HEBBIAN_N_HIDDEN)),
-    ("3", (config.HEBBIAN_N_HIDDEN, config.HEBBIAN_N_OUTPUTS)),
-)
 _LETTERS = ("A", "B", "C", "D")
 
 
-def init_weights():
+def _layer_shapes(n_inputs):
+    """Layer shapes, in flatten/unflatten order (matches hebbianStep.m's W1, W2,
+    W3). Parametrized by n_inputs so the genome adapts to whichever sensor mode
+    is in use (see config.n_inputs_for_sensor_mode) -- W2/W3 are unaffected since
+    only the input layer's width depends on the sensor."""
+    return (
+        ("1", (n_inputs, config.HEBBIAN_N_HIDDEN)),
+        ("2", (config.HEBBIAN_N_HIDDEN, config.HEBBIAN_N_HIDDEN)),
+        ("3", (config.HEBBIAN_N_HIDDEN, config.HEBBIAN_N_OUTPUTS)),
+    )
+
+
+def init_weights(n_inputs=None):
     """Fresh, randomly-initialized NN weights for one agent -- not evolved, re-drawn
     every episode. Uniform distribution in [-1, 1] for all three matrices."""
+    n_inputs = n_inputs if n_inputs is not None else config.HEBBIAN_N_INPUTS
     r = config.HEBBIAN_WEIGHT_INIT_RANGE
-    w1 = np.random.uniform(-r, r, (config.HEBBIAN_N_INPUTS, config.HEBBIAN_N_HIDDEN))
+    w1 = np.random.uniform(-r, r, (n_inputs, config.HEBBIAN_N_HIDDEN))
     w2 = np.random.uniform(-r, r, (config.HEBBIAN_N_HIDDEN, config.HEBBIAN_N_HIDDEN))
     w3 = np.random.uniform(-r, r, (config.HEBBIAN_N_HIDDEN, config.HEBBIAN_N_OUTPUTS))
     return w1, w2, w3
 
 
-def unflatten_abcd(flat):
-    """Maps an HEBBIAN_N_ABCD-length genome vector to a dict of 12 matrices -- A1,
-    A2, A3, B1, B2, B3, C1, C2, C3, D1, D2, D3 -- matching hebbianStep.m's
-    R.A1..R.D3 fields."""
+def unflatten_abcd(flat, n_inputs=None):
+    """Maps a genome vector (length config.n_abcd_for(n_inputs)) to a dict of 12
+    matrices -- A1, A2, A3, B1, B2, B3, C1, C2, C3, D1, D2, D3 -- matching
+    hebbianStep.m's R.A1..R.D3 fields."""
+    n_inputs = n_inputs if n_inputs is not None else config.HEBBIAN_N_INPUTS
+    layer_shapes = _layer_shapes(n_inputs)
     flat = np.asarray(flat, dtype=float)
     rules = {}
     idx = 0
     for letter in _LETTERS:
-        for suffix, shape in _LAYER_SHAPES:
+        for suffix, shape in layer_shapes:
             size = shape[0] * shape[1]
             rules[letter + suffix] = flat[idx:idx + size].reshape(shape)
             idx += size
-    assert idx == config.HEBBIAN_N_ABCD, f"expected to consume {config.HEBBIAN_N_ABCD}, got {idx}"
+    expected = config.n_abcd_for(n_inputs)
+    assert idx == expected, f"expected to consume {expected}, got {idx}"
     return rules
 
 
