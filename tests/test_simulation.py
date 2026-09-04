@@ -6,7 +6,7 @@ from swarm_gate_passing.hebbian_controller import unflatten_abcd, init_weights, 
 from swarm_gate_passing.sensor_model import get_sensor_data as get_sensor_data_quadrant
 from swarm_gate_passing.sensor_model_thymio import get_sensor_data as get_sensor_data_thymio
 from swarm_gate_passing.simulation import simulate_hebbian_episode, stage_fitness, EpisodeResult
-from swarm_gate_passing.environment import GradientSensor, Gate, render_path_map
+from swarm_gate_passing.environment import GradientSensor, Gate, evenly_spaced_gates, render_path_map
 
 
 def _random_genome(sensor_mode="quadrant", seed=0):
@@ -104,6 +104,48 @@ def test_gate_blocks_crossing_outside_opening_and_lets_opening_through():
     assert not gate.blocks((gate.y_lo_arena + gate.y_hi_arena) / 2.0)  # center of opening: passes
     assert gate.blocks(gate.y_hi_arena + 1.0)  # well outside the opening: blocked
     assert gate.blocks(gate.y_lo_arena - 1.0)
+
+
+def test_evenly_spaced_gates_single_gate_matches_original_single_gate():
+    grid = render_path_map("sine_curve", 10.0, 10.0, path_kwargs={"freq": 2.0})
+    sensor = GradientSensor(grid, world_size_x=10.0, world_size_y=10.0, noise_magnitude=0.0)
+    gates = evenly_spaced_gates(sensor, n_gates=1, finish_x=-3.0, opening_width_m=1.0,
+                                 x_range=config.X_RANGE, y_range=config.Y_RANGE)
+    single = Gate.centered_on_path(sensor, x_arena=-3.0, opening_width_m=1.0,
+                                    x_range=config.X_RANGE, y_range=config.Y_RANGE)
+    assert len(gates) == 1
+    assert gates[0] == single
+
+
+def test_evenly_spaced_gates_last_gate_is_at_finish_x_and_ordered_by_travel():
+    grid = render_path_map("zigzag", 10.0, 10.0)
+    sensor = GradientSensor(grid, world_size_x=10.0, world_size_y=10.0, noise_magnitude=0.0)
+    gates = evenly_spaced_gates(sensor, n_gates=4, finish_x=-4.0, opening_width_m=1.0,
+                                 x_range=config.X_RANGE, y_range=config.Y_RANGE, start_x=0.0)
+    assert len(gates) == 4
+    assert gates[-1].x_arena == pytest.approx(-4.0)
+    xs = [g.x_arena for g in gates]
+    assert xs == sorted(xs, reverse=True)  # descending x = travel order (spawn -> finish)
+
+
+def test_multi_gate_episode_blocks_and_reports_success_consistently():
+    grid = render_path_map("sine_curve", 10.0, 10.0, path_kwargs={"freq": 2.0})
+    sensor = GradientSensor(grid, world_size_x=10.0, world_size_y=10.0, noise_magnitude=0.0)
+    gates = evenly_spaced_gates(sensor, n_gates=3, finish_x=-3.0, opening_width_m=0.8,
+                                 x_range=config.X_RANGE, y_range=config.Y_RANGE)
+    rules = unflatten_abcd(_random_genome(seed=4))
+
+    result = simulate_hebbian_episode(
+        rules, seed=11, n_agents=4, wind_enabled=False, max_battery=8.0, min_battery=8.0,
+        gradient_sensor=sensor, gates=gates)
+
+    assert np.isfinite(result.wall_collision_time)
+    # success can only be True if the episode actually terminated with every agent
+    # past the LAST gate (the only way past every earlier gate's barrier too)
+    if result.success:
+        assert result.dist_travelled >= 3.0 - 1e-6
+    eff = stage_fitness(result, "gate_passing")
+    assert np.isfinite(eff)
 
 
 def test_success_flag_true_only_when_finish_line_crossed():

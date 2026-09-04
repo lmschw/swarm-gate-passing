@@ -117,13 +117,13 @@ def evaluate_candidate(genome, candidate_id, cfg: EvalConfig):
     for r in range(cfg.n_repeats):
         seed = cfg.seed_base + candidate_id * 1000 + r
         try:
-            gradient_sensor, gate, finish_x = _make_episode_environment(cfg, env_rng)
+            gradient_sensor, gates, finish_x = _make_episode_environment(cfg, env_rng)
             result = simulate_hebbian_episode(
                 rules, seed=seed, n_agents=cfg.n_agents, wind_enabled=cfg.wind_enabled,
                 max_battery=cfg.max_battery, min_battery=cfg.min_battery,
                 nx=cfg.nx, ny=cfg.ny, use_battery_sensor=cfg.use_battery_sensor,
                 sensor_mode=cfg.sensor_mode, gradient_sensor=gradient_sensor,
-                gate=gate, finish_x=finish_x)
+                gates=gates, finish_x=finish_x)
             effs.append(stage_fitness(result, cfg.stage))
         except Exception as e:
             print(f"\n⚠️  Candidate {candidate_id} repeat {r} failed "
@@ -178,7 +178,7 @@ def run_stage(stage, x0, plotter, popsize, maxiter, cfg_kwargs, output_dir, name
 
 def train_one_seed(seed, output_dir, stages, popsize, maxiter, n_agents, n_repeats,
                     battery, wind_grid, no_battery_sensor, gradient_map, sensor_mode,
-                    freq_choices, gate_x_choices, gate_opening_width, n_workers,
+                    freq_choices, gate_x_choices, gate_opening_width, n_gates, n_workers,
                     init_genome_path=None):
     os.makedirs(output_dir, exist_ok=True)
     np.random.seed(seed)
@@ -207,7 +207,7 @@ def train_one_seed(seed, output_dir, stages, popsize, maxiter, n_agents, n_repea
             max_battery=battery, min_battery=battery, nx=wind_grid, ny=wind_grid,
             use_battery_sensor=not no_battery_sensor, wind_enabled=wind_enabled,
             gradient_map_path=gradient_map if stage == "follow_gradient_path" else None,
-            freq_choices=this_freq_choices, gate_enabled=gate_enabled,
+            freq_choices=this_freq_choices, gate_enabled=gate_enabled, n_gates=n_gates,
             finish_x_choices=this_gate_x_choices, gate_opening_width=gate_opening_width,
         )
         genome = run_stage(stage, genome, plotter, popsize, maxiter, cfg_kwargs, output_dir,
@@ -245,6 +245,10 @@ def build_arg_parser():
                          help="Arena-frame x placements to sample per episode for the finish "
                               "line ('follow_gradient_no_gate') / gate ('gate_passing').")
     parser.add_argument("--gate-opening-width", type=float, default=config.GATE_OPENING_WIDTH_M)
+    parser.add_argument("--n-gates", type=int, default=1,
+                         help="Number of gates evenly spaced along the track (from the spawn area "
+                              "to the randomly-chosen finish line) in the 'gate_passing' stage. "
+                              "1 (default) reproduces the original single-gate behavior exactly.")
     parser.add_argument("--init-genome", default=None, metavar="PATH")
     parser.add_argument("--workers", type=int, default=None,
                          help="Process-pool size for parallel candidate evaluation "
@@ -260,7 +264,7 @@ def main(argv=None):
         train_one_seed(seed, output_dir, args.stages, args.popsize, args.maxiter, args.n_agents,
                         args.n_repeats, args.battery, args.wind_grid, args.no_battery_sensor,
                         args.gradient_map, args.sensor_mode, args.path_freq_choices,
-                        args.gate_x_choices, args.gate_opening_width, n_workers,
+                        args.gate_x_choices, args.gate_opening_width, args.n_gates, n_workers,
                         init_genome_path=args.init_genome)
 
     if args.seeds is not None:

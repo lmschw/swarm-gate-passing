@@ -67,7 +67,7 @@ def main(argv=None):
     result = simulate_hebbian_episode(
         rules, seed=args.seed, n_agents=args.n_agents, wind_enabled=args.wind_enabled,
         nx=args.wind_grid, ny=args.wind_grid, sensor_mode=args.sensor_mode,
-        gradient_sensor=gradient_sensor, gate=gate, finish_x=finish_x,
+        gradient_sensor=gradient_sensor, gates=[gate] if gate is not None else None, finish_x=finish_x,
         record_trajectory=True)
     positions = result.telemetry["positions"]  # (n_steps, n_agents, 2), arena frame
 
