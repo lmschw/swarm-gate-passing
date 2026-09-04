@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+build/
+dist/
+
+# Training/visualization outputs (regenerate via generate_maps.py / optimize.py / visualize.py)
+maps_gradient/
+hebbian_results*/
+*.npy
+*.mp4
+trajectory.png
+fitness_curve*.png
