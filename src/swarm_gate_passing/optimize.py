@@ -238,8 +238,12 @@ def build_arg_parser():
                               "each into its own '<output-dir>/seed_<seed>/' subdirectory. Pass with no "
                               f"values to use this project's canonical seeds ({config.HEBBIAN_BATCH_SEEDS}).")
     parser.add_argument("--output-dir", default="hebbian_results")
-    parser.add_argument("--stages", nargs="+", default=list(config.HEBBIAN_STAGES),
-                         choices=list(config.HEBBIAN_STAGES))
+    parser.add_argument("--stages", nargs="+", default=list(config.GATE_STAGES),
+                         choices=list(config.HEBBIAN_STAGES),
+                         help="Default is the gate-passing curriculum (follow_gradient_no_gate, "
+                              "gate_passing). The energy-efficiency curriculum (walk_left, "
+                              "save_battery_avoid_wall, save_battery_avoid_all, follow_gradient_path) "
+                              "is a separate, unrelated task -- pass its stage names explicitly to run it.")
     parser.add_argument("--battery", type=float, default=None)
     parser.add_argument("--wind-grid", type=int, default=None)
     parser.add_argument("--no-battery-sensor", action="store_true")

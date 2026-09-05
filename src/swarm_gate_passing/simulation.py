@@ -68,20 +68,36 @@ def _world_frame_position(agents):
     return world_x, world_y
 
 
-def _move(agents, vel, dt, n_agents, min_dist, walls, gates=None):
+def _move(agents, vel, dt, n_agents, min_dist, walls, gates=None, wind_enabled=True):
     """Kinematic integration + collision bookkeeping, mirroring move() in
     simulation_free_global_mod_2.m. Tracks inter-robot and wall collisions
     separately so stage_fitness can weight/use them independently.
 
     gates: optional list of environment.gate.Gate (see environment.gate.
-    evenly_spaced_gates), checked in descending-x (travel) order. Any agent
-    whose step would cross a gate's x outside its opening is stopped right at
-    that barrier instead, and counted as a wall hit (same weight/meaning as an
+    evenly_spaced_gates), checked in descending-x (travel) order and enforced
+    LAST, after every other position clamp -- see the wind_enabled note below
+    for why order matters here, not just tidiness. Any agent whose step would
+    cross a gate's x outside its opening is stopped right at that barrier
+    instead, and counted as a wall hit (same weight/meaning as an
     arena-boundary hit). Since a single step's displacement is tiny relative to
     gate spacing, an agent crossing more than one gate in the same step is not
     expected in practice, but gates are still processed in travel order (the
     order evenly_spaced_gates returns them in) so the FIRST barrier an agent
-    would actually reach takes precedence if it ever did happen."""
+    would actually reach takes precedence if it ever did happen.
+
+    wind_enabled: gates the "wind-tracking camera window" x-clamp below (the
+    ORIGINAL vendored move() applies this unconditionally). That clamp pulls
+    any agent more than WIND_TRACKING_MAX_SPAN behind the swarm's leader
+    forward -- its only real purpose is bounding RayTraceCircularRobots' grid
+    to the swarm's extent, so it's pointless (and actively harmful) when wind
+    is off: with no wind cost, an unblocked leader can travel far enough past
+    a Gate for this clamp to drag a STILL-BLOCKED straggler through the
+    barrier's x in one step, without that straggler ever having been inside
+    the opening -- a real bug found by inspecting a trained genome's video
+    (one agent "through", the rest never coordinated) that let CMA-ES farm the
+    success bonus via this artifact instead of genuine coordinated passage.
+    Applying gate-blocking AFTER this clamp (and after the wall clamps) closes
+    that hole even if a future config enables both wind and gates together."""
     vel_actual = np.zeros((n_agents, 3))
     vel_actual[:, 0:2] = vel
     vel_actual[:, 2] = agents[:, 2]
@@ -94,6 +110,29 @@ def _move(agents, vel, dt, n_agents, min_dist, walls, gates=None):
     agents[:, 0] += dx
     agents[:, 1] += dy
     agents[:, 2] = wrap_to_pi(agents[:, 2] + vel[:, 1] * dt)
+
+    agents_xy = agents[:, 0:2]
+    D = np.linalg.norm(agents_xy[:, None, :] - agents_xy[None, :, :], axis=-1)
+    close_agents = (D < min_dist) & (~np.eye(n_agents, dtype=bool))
+    pair_collisions = int(np.count_nonzero(np.triu(close_agents, k=1)))
+    iu = np.triu_indices(n_agents, k=1)
+    mean_pairwise_dist = float(np.mean(D[iu])) if n_agents > 1 else 0.0
+    proximity_penalty = _proximity_penalty(D, iu) if n_agents > 1 else 0.0
+
+    wall_margin = config.ROBOT_RAD * config.WALL_MARGIN_FACTOR
+    wall_hits = int(np.sum((agents[:, 0] > walls[1] - wall_margin) |
+                           (agents[:, 1] > walls[2] - wall_margin) |
+                           (agents[:, 1] < walls[3] + wall_margin)))
+
+    min_x = np.min(agents[:, 0])
+    max_x = min(np.max(agents[:, 0]), min_x + config.WIND_TRACKING_MAX_SPAN)
+    window_width = config.WIND_TRACKING_WINDOW_WIDTH
+    xRange = [min_x - (window_width - (max_x - min_x)) / 2.0, max_x + (window_width - (max_x - min_x)) / 2.0]
+
+    if wind_enabled:
+        agents[:, 0] = np.minimum(agents[:, 0], max_x)
+    agents[:, 1] = np.minimum(agents[:, 1], walls[2])
+    agents[:, 1] = np.maximum(agents[:, 1], walls[3])
 
     gate_hits = 0
     if gates:
@@ -111,28 +150,7 @@ def _move(agents, vel, dt, n_agents, min_dist, walls, gates=None):
                 agents[blocked, 0] = gate.x_arena + 1e-3 * sign
                 gate_hits += int(np.count_nonzero(blocked))
                 already_blocked |= blocked
-
-    agents_xy = agents[:, 0:2]
-    D = np.linalg.norm(agents_xy[:, None, :] - agents_xy[None, :, :], axis=-1)
-    close_agents = (D < min_dist) & (~np.eye(n_agents, dtype=bool))
-    pair_collisions = int(np.count_nonzero(np.triu(close_agents, k=1)))
-    iu = np.triu_indices(n_agents, k=1)
-    mean_pairwise_dist = float(np.mean(D[iu])) if n_agents > 1 else 0.0
-    proximity_penalty = _proximity_penalty(D, iu) if n_agents > 1 else 0.0
-
-    wall_margin = config.ROBOT_RAD * config.WALL_MARGIN_FACTOR
-    wall_hits = int(np.sum((agents[:, 0] > walls[1] - wall_margin) |
-                           (agents[:, 1] > walls[2] - wall_margin) |
-                           (agents[:, 1] < walls[3] + wall_margin))) + gate_hits
-
-    min_x = np.min(agents[:, 0])
-    max_x = min(np.max(agents[:, 0]), min_x + config.WIND_TRACKING_MAX_SPAN)
-    window_width = config.WIND_TRACKING_WINDOW_WIDTH
-    xRange = [min_x - (window_width - (max_x - min_x)) / 2.0, max_x + (window_width - (max_x - min_x)) / 2.0]
-
-    agents[:, 0] = np.minimum(agents[:, 0], max_x)
-    agents[:, 1] = np.minimum(agents[:, 1], walls[2])
-    agents[:, 1] = np.maximum(agents[:, 1], walls[3])
+        wall_hits += gate_hits
 
     x_old, y_old = agents_old[:, 0], agents_old[:, 1]
     x_new, y_new = agents[:, 0], agents[:, 1]
@@ -222,6 +240,7 @@ def simulate_hebbian_episode(abcd_rules, seed=None, n_agents=None, wind_enabled=
     batteryEmpty = False
     success = False
     positions_log = [agents[:, 0:2].copy()] if record_trajectory else None
+    headings_log = [agents[:, 2].copy()] if record_trajectory else None
     battery_log = [agents[:, 3].copy()] if record_battery else None
     vel = np.zeros((n_agents, 2))
 
@@ -248,7 +267,7 @@ def simulate_hebbian_episode(abcd_rules, seed=None, n_agents=None, wind_enabled=
             weights[i] = (w1n, w2n, w3n)
 
         vel_actual, agents, xRange, pair_hits, wall_hits, mean_pairwise_dist, _ = _move(
-            agents, vel, dt, n_agents, min_dist, walls, gates=gates)
+            agents, vel, dt, n_agents, min_dist, walls, gates=gates, wind_enabled=wind_enabled)
         pair_collision_counter += pair_hits
         wall_collision_counter += wall_hits
         cohesion_dist_sum += mean_pairwise_dist
@@ -259,6 +278,7 @@ def simulate_hebbian_episode(abcd_rules, seed=None, n_agents=None, wind_enabled=
             post_gate_steps += 1
         if record_trajectory:
             positions_log.append(agents[:, 0:2].copy())
+            headings_log.append(agents[:, 2].copy())
 
         if wind_enabled:
             yVals, xVals, powerVals = RayTraceCircularRobots(agents, wind_rad, Uinf, xRange, yRange, Nx, Ny)
@@ -288,6 +308,7 @@ def simulate_hebbian_episode(abcd_rules, seed=None, n_agents=None, wind_enabled=
     if record_trajectory or record_battery:
         telemetry = {
             "positions": np.array(positions_log) if record_trajectory else None,
+            "headings": np.array(headings_log) if record_trajectory else None,
             "battery": np.array(battery_log) if record_battery else None,
         }
 
@@ -302,7 +323,7 @@ def simulate_hebbian_episode(abcd_rules, seed=None, n_agents=None, wind_enabled=
 def stage_fitness(result: EpisodeResult, stage: str) -> float:
     """Per-stage fitness formula:
 
-    eff = HEBBIAN_EFF_DISTANCE_WEIGHT*dist
+    eff = distance_w*dist
           + avg_batt/battery_w
           - (wall_col_mult*wall_col_time [+ collision_time]) / collision_w
           - cohesion_dist / cohesion_w
@@ -313,11 +334,20 @@ def stage_fitness(result: EpisodeResult, stage: str) -> float:
           - post_gate_cohesion_dist / post_gate_cohesion_w [if the swarm ever got past the last gate]
           + success_bonus [if success]
 
-    All terms are optional (config.HEBBIAN_STAGE_FITNESS_WEIGHTS[stage].get(...)
-    returning None disables that term entirely).
+    distance_w defaults to config.HEBBIAN_EFF_DISTANCE_WEIGHT (16.0, the value
+    calibrated for the energy-efficiency curriculum) but is overridable per
+    stage -- see config.HEBBIAN_STAGE_FITNESS_WEIGHTS["gate_passing"]'s much
+    lower value: at 16.0, a few meters of raw forward progress dwarfs the
+    path-deviation/cohesion penalties (both single-digit meters divided by
+    single-digit weights) regardless of how those are tuned, making "charge
+    straight ahead, get pinned against a wall, keep going" a good strategy --
+    walls only clamp Y, never stop X-progress -- with no incentive to actually
+    steer toward the gate. All terms are optional (a missing/None weight
+    disables that term entirely).
     """
     weights = config.HEBBIAN_STAGE_FITNESS_WEIGHTS[stage]
-    eff = config.HEBBIAN_EFF_DISTANCE_WEIGHT * result.dist_travelled
+    distance_w = weights.get("distance_w", config.HEBBIAN_EFF_DISTANCE_WEIGHT)
+    eff = distance_w * result.dist_travelled
 
     battery_w = weights.get("battery_w")
     if battery_w is not None:

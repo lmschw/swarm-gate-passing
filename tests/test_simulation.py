@@ -5,7 +5,7 @@ from swarm_gate_passing import config
 from swarm_gate_passing.hebbian_controller import unflatten_abcd, init_weights, hebbian_step
 from swarm_gate_passing.sensor_model import get_sensor_data as get_sensor_data_quadrant
 from swarm_gate_passing.sensor_model_thymio import get_sensor_data as get_sensor_data_thymio
-from swarm_gate_passing.simulation import simulate_hebbian_episode, stage_fitness, EpisodeResult
+from swarm_gate_passing.simulation import simulate_hebbian_episode, stage_fitness, EpisodeResult, _move
 from swarm_gate_passing.environment import GradientSensor, Gate, evenly_spaced_gates, render_path_map
 
 
@@ -104,6 +104,42 @@ def test_gate_blocks_crossing_outside_opening_and_lets_opening_through():
     assert not gate.blocks((gate.y_lo_arena + gate.y_hi_arena) / 2.0)  # center of opening: passes
     assert gate.blocks(gate.y_hi_arena + 1.0)  # well outside the opening: blocked
     assert gate.blocks(gate.y_lo_arena - 1.0)
+
+
+def test_wind_tracking_window_cannot_drag_a_blocked_straggler_through_a_gate():
+    """Regression test for a real bug: the "wind-tracking camera window" clamp
+    (agents[:,0] = min(agents[:,0], min_x + WIND_TRACKING_MAX_SPAN), meant only
+    to bound RayTraceCircularRobots' grid to the swarm's extent) used to run
+    BEFORE the gate check. If a leader got far enough ahead (more than
+    WIND_TRACKING_MAX_SPAN=9.8m past a straggler still legitimately blocked at
+    a gate), that clamp alone could drag the straggler's x past the gate in one
+    step, with no crossing ever detected -- a false "success" with zero actual
+    coordination. Reproduced here with a single, zero-velocity step: agent 0 is
+    already 16.6m ahead of agent 1, which sits legitimately blocked just behind
+    a gate whose opening doesn't cover its y. Even with wind_enabled=True (the
+    only setting where the window clamp still runs at all), agent 1 must not
+    end up on the far side of the gate."""
+    gate = Gate(x_arena=-3.5, y_lo_arena=-0.5, y_hi_arena=0.5)
+    agents = np.array([
+        [-20.0, 0.0, 0.0, 100.0],   # agent 0: far past the gate already
+        [-3.4, 2.0, 0.0, 100.0],    # agent 1: just behind the gate, y=2.0 is well outside the opening
+    ])
+    vel = np.zeros((2, 2))  # zero velocity: isolates the window-clamp's own effect from any movement
+    walls = [config.X_RANGE[0] + config.ROBOT_RAD, config.X_RANGE[1] - config.ROBOT_RAD,
+             config.Y_RANGE[1] - config.ROBOT_RAD, config.Y_RANGE[0] + config.ROBOT_RAD]
+    min_dist = config.COLLISION_MIN_DIST_SLACK + 2.0 * config.ROBOT_RAD
+
+    for wind_enabled in (False, True):
+        _, moved, _, _, wall_hits, _, _ = _move(agents.copy(), vel, config.DT, 2, min_dist, walls,
+                                                 gates=[gate], wind_enabled=wind_enabled)
+        assert moved[1, 0] > gate.x_arena, (
+            f"agent 1 ended up at x={moved[1, 0]} past the gate (x_arena={gate.x_arena}) "
+            f"with wind_enabled={wind_enabled} -- the window clamp smuggled it through")
+        if wind_enabled:
+            # only wind_enabled=True actually attempts the drag in the first place
+            # (see the clamp's own `if wind_enabled:` guard) -- the defense-in-depth
+            # gate check catches and reverses it, which should count as a hit.
+            assert wall_hits >= 1
 
 
 def test_evenly_spaced_gates_single_gate_matches_original_single_gate():
