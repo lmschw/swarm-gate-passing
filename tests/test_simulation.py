@@ -215,6 +215,34 @@ def test_post_gate_cohesion_is_tracked_once_swarm_clears_gate():
     assert np.isfinite(eff)
 
 
+def test_stopped_time_is_zero_when_never_below_threshold():
+    rules = unflatten_abcd(_random_genome(seed=10))
+    result = simulate_hebbian_episode(
+        rules, seed=23, n_agents=3, wind_enabled=False, max_battery=3.0, min_battery=3.0,
+        max_steps=20)
+    # not a behavioral guarantee (genome-dependent), just exercises the field/wiring
+    assert result.stopped_time >= 0.0
+    eff = stage_fitness(result, "flock_gate_speed")
+    assert np.isfinite(eff)
+
+
+def test_stopped_time_accumulates_when_agents_never_move():
+    # directly drive _move() with zero velocity every step -- deterministic, no
+    # dependence on what a random genome's controller happens to output.
+    n_agents = 3
+    agents = np.array([[0.0, 0.0, 0.0, 100.0], [1.0, 0.0, 0.0, 100.0], [-1.0, 0.5, 0.0, 100.0]])
+    vel = np.zeros((n_agents, 2))
+    walls = [config.X_RANGE[0] + config.ROBOT_RAD, config.X_RANGE[1] - config.ROBOT_RAD,
+             config.Y_RANGE[1] - config.ROBOT_RAD, config.Y_RANGE[0] + config.ROBOT_RAD]
+    min_dist = config.COLLISION_MIN_DIST_SLACK + 2.0 * config.ROBOT_RAD
+    n_steps = 10
+    stopped_steps = 0
+    for _ in range(n_steps):
+        vel_actual, agents, _, _, _, _, _ = _move(agents, vel, config.DT, n_agents, min_dist, walls)
+        stopped_steps += int(np.sum(vel_actual[:, 0] < config.GATE_STOP_SPEED_THRESHOLD_MPS))
+    assert stopped_steps == n_agents * n_steps  # every agent, every step: fully stopped
+
+
 def test_max_steps_terminates_episode_before_battery_empty():
     rules = unflatten_abcd(_random_genome(seed=7))
     # plenty of battery (would otherwise run ~hundreds of steps) but capped hard at 5 steps

@@ -215,6 +215,18 @@ GATE_POST_GATE_COHESION_WEIGHT = 1.0  # eff -= post_gate_cohesion_dist / this (m
 GATE_DISTANCE_WEIGHT = 1.0          # eff += dist_travelled_capped / this (meters, capped -- see below)
 GATE_SPEED_WEIGHT = 0.05            # eff += mean_speed_mps / this (mean_speed ~0.06-0.2 m/s observed
                                      # -> contributes roughly 1-4, comparable to the other terms, not dominant)
+# mean_speed alone doesn't discourage stop-start oscillation: a fast burst followed by a
+# full stop can still average out fine -- confirmed in practice (a flock_gate_speed genome
+# with a good mean_speed still visibly moved, stopped, moved, stopped in its video). This
+# penalizes actual STOPPED time directly, agent-seconds (same convention as collision_time:
+# a per-step count of agents below the threshold, summed over the episode and scaled by dt).
+# Threshold is ~15-20% of the ~0.1-0.16 m/s cruising speeds actually observed, well below
+# real movement but above near-zero noise. Weight: worst case (all 10 agents stopped for a
+# full ~200s episode) is 2000 agent-seconds; a genome stopped ~20% of the time for half the
+# swarm is more like 200 agent-seconds -- dividing by 100 keeps that typical-bad-case penalty
+# (~2) in the same range as the other smooth terms, not dominant but a real, direct cost.
+GATE_STOP_SPEED_THRESHOLD_MPS = 0.02
+GATE_STOPPED_TIME_WEIGHT = 100.0
 GATE_SUCCESS_BONUS = 30.0           # eff += this iff EVERY agent crossed the finish line -- roughly an
                                      # order of magnitude above the smooth terms' typical spread, so success
                                      # is unambiguously better than any amount of near-miss behavior
@@ -331,6 +343,7 @@ HEBBIAN_STAGE_FITNESS_WEIGHTS = {
         "success_bonus": GATE_SUCCESS_BONUS,
         "post_gate_cohesion_w": GATE_POST_GATE_COHESION_WEIGHT,
         "speed_w": GATE_SPEED_WEIGHT,
+        "stopped_w": GATE_STOPPED_TIME_WEIGHT,
     },
 }
 

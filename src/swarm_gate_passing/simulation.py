@@ -46,6 +46,8 @@ class EpisodeResult:
     path_alignment: float            # mean sensed light reading, rescaled to [0, 100]
     path_deviation_m: float          # mean geometric distance to the path centerline [m]
     mean_speed: float                # mean realized linear speed [m/s]
+    stopped_time: float              # agent-seconds spent below GATE_STOP_SPEED_THRESHOLD_MPS
+                                       # (same accumulation convention as collision_time)
     success: float                   # 1.0 iff every agent had crossed finish_x by episode end
     post_gate_cohesion_dist: Optional[float] = None  # mean pairwise distance, steps-past-last-gate only
     telemetry: Optional[dict] = None
@@ -258,6 +260,7 @@ def simulate_hebbian_episode(abcd_rules, seed=None, n_agents=None, wind_enabled=
     path_alignment_sum = 0.0
     path_deviation_sum = 0.0
     speed_sum = 0.0
+    stopped_steps_counter = 0
     steps = 0
     post_gate_cohesion_sum = 0.0
     post_gate_steps = 0
@@ -297,6 +300,7 @@ def simulate_hebbian_episode(abcd_rules, seed=None, n_agents=None, wind_enabled=
         wall_collision_counter += wall_hits
         cohesion_dist_sum += mean_pairwise_dist
         speed_sum += float(np.mean(vel_actual[:, 0]))
+        stopped_steps_counter += int(np.sum(vel_actual[:, 0] < config.GATE_STOP_SPEED_THRESHOLD_MPS))
         steps += 1
         if last_gate_x is not None and np.all(agents[:, 0] < last_gate_x):
             post_gate_cohesion_sum += mean_pairwise_dist
@@ -331,6 +335,7 @@ def simulate_hebbian_episode(abcd_rules, seed=None, n_agents=None, wind_enabled=
     path_alignment = (100.0 * path_alignment_sum / 255.0 / steps) if steps else 0.0
     path_deviation_m = path_deviation_sum / steps if steps else 0.0
     mean_speed = speed_sum / steps if steps else 0.0
+    stopped_time = stopped_steps_counter * dt
     proximity_penalty = 0.0  # tracked but unweighted by default; see _proximity_penalty
     post_gate_cohesion_dist = (post_gate_cohesion_sum / post_gate_steps) if post_gate_steps else None
 
@@ -347,8 +352,8 @@ def simulate_hebbian_episode(abcd_rules, seed=None, n_agents=None, wind_enabled=
         average_batt=average_batt, collision_time=collision_time,
         wall_collision_time=wall_collision_time, cohesion_dist=cohesion_dist,
         proximity_penalty=proximity_penalty, path_alignment=path_alignment,
-        path_deviation_m=path_deviation_m, mean_speed=mean_speed, success=float(success),
-        post_gate_cohesion_dist=post_gate_cohesion_dist, telemetry=telemetry)
+        path_deviation_m=path_deviation_m, mean_speed=mean_speed, stopped_time=stopped_time,
+        success=float(success), post_gate_cohesion_dist=post_gate_cohesion_dist, telemetry=telemetry)
 
 
 def stage_fitness(result: EpisodeResult, stage: str) -> float:
@@ -362,6 +367,7 @@ def stage_fitness(result: EpisodeResult, stage: str) -> float:
           - path_deviation_m / path_deviation_w
           + path_alignment / path_w
           + mean_speed / speed_w
+          - stopped_time / stopped_w
           - post_gate_cohesion_dist / post_gate_cohesion_w [if the swarm ever got past the last gate]
           + success_bonus [if success]
 
@@ -415,6 +421,10 @@ def stage_fitness(result: EpisodeResult, stage: str) -> float:
     speed_w = weights.get("speed_w")
     if speed_w is not None:
         eff += result.mean_speed / speed_w
+
+    stopped_w = weights.get("stopped_w")
+    if stopped_w is not None:
+        eff -= result.stopped_time / stopped_w
 
     success_bonus = weights.get("success_bonus")
     if success_bonus is not None and result.success:

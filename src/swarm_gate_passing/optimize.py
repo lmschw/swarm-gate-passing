@@ -151,13 +151,21 @@ def evaluate_candidate(genome, candidate_id, cfg: EvalConfig):
     return -float(np.median(effs))  # CMA-ES minimizes
 
 
-def run_stage(stage, x0, plotter, popsize, maxiter, cfg_kwargs, output_dir, name_suffix, n_workers):
+def run_stage(stage, x0, plotter, popsize, maxiter, cfg_kwargs, output_dir, name_suffix, n_workers,
+              cma_seed=None):
     print(f"\n{'=' * 70}\n🧬 STAGE: {stage}  ({cfg_kwargs})\n{'=' * 70}")
 
+    # cma's own 'seed' option treats 0/None as "use system time" (non-deterministic) --
+    # without setting it explicitly, our own --seed only pins the per-episode simulation
+    # RNG (via EvalConfig/simulate_hebbian_episode's seed=), NOT which candidate genomes
+    # CMA-ES samples each generation, so "the same --seed" alone does not reproduce a run
+    # end-to-end (confirmed in practice: two runs with --seed 42 diverged sharply by the
+    # gate-passing stage, a harder/more sensitive landscape than the earlier stages).
     es = cma.CMAEvolutionStrategy(x0, config.HEBBIAN_CMAES_SIGMA0, {
         'popsize': popsize,
         'maxiter': maxiter,
         'bounds': list(config.HEBBIAN_ABCD_BOUNDS),
+        'seed': cma_seed if cma_seed else 0,
     })
     plotter.reset_run(title=f"stage: {stage}{name_suffix}")
 
@@ -215,7 +223,7 @@ def train_one_seed(seed, output_dir, stages, popsize, maxiter, n_agents, n_repea
     else:
         genome = np.random.uniform(config.HEBBIAN_ABCD_BOUNDS[0], config.HEBBIAN_ABCD_BOUNDS[1], n_abcd)
 
-    for stage in stages:
+    for stage_idx, stage in enumerate(stages):
         wind_enabled = config.HEBBIAN_STAGE_WIND_ENABLED[stage]
         gate_enabled = stage in config.GATE_ENABLED_STAGES
         is_gate_task_stage = stage in config.GATE_STAGES
@@ -232,7 +240,7 @@ def train_one_seed(seed, output_dir, stages, popsize, maxiter, n_agents, n_repea
             max_steps=config.GATE_MAX_STEPS if is_gate_task_stage else None,
         )
         genome = run_stage(stage, genome, plotter, popsize, maxiter, cfg_kwargs, output_dir,
-                            name_suffix, n_workers)
+                            name_suffix, n_workers, cma_seed=seed + stage_idx + 1)
     plotter.close()
 
 
