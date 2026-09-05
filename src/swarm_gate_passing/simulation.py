@@ -366,15 +366,15 @@ def stage_fitness(result: EpisodeResult, stage: str) -> float:
           + success_bonus [if success]
 
     distance_w defaults to config.HEBBIAN_EFF_DISTANCE_WEIGHT (16.0, the value
-    calibrated for the energy-efficiency curriculum) but is overridable per
-    stage -- see config.HEBBIAN_STAGE_FITNESS_WEIGHTS["gate_passing"]'s much
-    lower value: at 16.0, a few meters of raw forward progress dwarfs the
-    path-deviation/cohesion penalties (both single-digit meters divided by
-    single-digit weights) regardless of how those are tuned, making "charge
-    straight ahead, get pinned against a wall, keep going" a good strategy --
-    walls only clamp Y, never stop X-progress -- with no incentive to actually
-    steer toward the gate. All terms are optional (a missing/None weight
-    disables that term entirely).
+    calibrated for the energy-efficiency curriculum) but every gate-curriculum
+    stage overrides it explicitly (config.HEBBIAN_STAGE_FITNESS_WEIGHTS) --
+    at 16.0, a few meters of raw forward progress dwarfs the path-deviation/
+    cohesion penalties (both single-digit meters divided by single-digit
+    weights) regardless of how those are tuned, making "charge straight ahead,
+    get pinned against a wall, keep going" a good strategy -- walls only clamp
+    Y, never stop X-progress -- with no incentive to actually steer toward the
+    gate. All terms are optional (a missing/None weight disables that term
+    entirely; distance_w=0.0 disables it too, since it's a multiplier).
     """
     weights = config.HEBBIAN_STAGE_FITNESS_WEIGHTS[stage]
     distance_w = weights.get("distance_w", config.HEBBIAN_EFF_DISTANCE_WEIGHT)

@@ -1,0 +1,12 @@
+🚀 stages=['flock_cohesion', 'flock_gradient', 'flock_gate', 'flock_gate_speed'], sensor_mode=quadrant, popsize=30, maxiter=100, n_agents=10, n_repeats=3, workers=22
+
+======================================================================
+🧬 STAGE: flock_cohesion  ({'sensor_mode': 'quadrant', 'n_agents': 10, 'n_repeats': 3, 'max_battery': None, 'min_battery': None, 'nx': None, 'ny': None, 'use_battery_sensor': True, 'wind_enabled': False, 'gradient_map_path': None, 'freq_choices': (2.0, 4.0, 6.0), 'gate_enabled': False, 'n_gates': 1, 'finish_x_choices': (-2.5, -3.5, -4.5), 'gate_opening_width': 1.0, 'post_gate_distance': 1.5, 'max_steps': 400})
+======================================================================
+(15_w,30)-aCMA-ES (mu_w=8.6,w_1=20%) in dimension 920 (seed=687359, Sat Sep  5 11:37:01 2026)
+✅ Gen 001/100 | Best Loss (neg eff): 1.5598 | 6.4s
+✅ Gen 002/100 | Best Loss (neg eff): 1.5951 | 7.9s
+✅ Gen 003/100 | Best Loss (neg eff): 1.6168 | 5.6s
+✅ Gen 004/100 | Best Loss (neg eff): 1.5114 | 6.1s
+✅ Gen 005/100 | Best Loss (neg eff): 1.5331 | 5.9s
+✅ Gen 006/100 | Best Loss (neg eff): 1.5036 | 5.7s

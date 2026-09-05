@@ -91,7 +91,7 @@ def test_episode_with_gradient_sensor_returns_path_metrics():
 
     assert 0.0 <= result.path_alignment <= 100.0
     assert result.path_deviation_m >= 0.0
-    eff = stage_fitness(result, "follow_gradient_no_gate")
+    eff = stage_fitness(result, "flock_gradient")
     assert np.isfinite(eff)
 
 
@@ -180,7 +180,7 @@ def test_multi_gate_episode_blocks_and_reports_success_consistently():
     # past the LAST gate (the only way past every earlier gate's barrier too)
     if result.success:
         assert result.dist_travelled >= 3.0 - 1e-6
-    eff = stage_fitness(result, "gate_passing")
+    eff = stage_fitness(result, "flock_gate")
     assert np.isfinite(eff)
 
 
@@ -211,7 +211,7 @@ def test_post_gate_cohesion_is_tracked_once_swarm_clears_gate():
         gradient_sensor=sensor, gates=gates, finish_x=-100.0)  # unreachable finish -> full episode runs
     assert result.post_gate_cohesion_dist is not None
     assert result.post_gate_cohesion_dist >= 0.0
-    eff = stage_fitness(result, "gate_passing")
+    eff = stage_fitness(result, "flock_gate")
     assert np.isfinite(eff)
 
 
