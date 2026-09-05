@@ -1,0 +1,58 @@
+🚀 stages=['vision_flock', 'vision_gate'], sensor_mode=vision, popsize=30, maxiter=100, n_agents=10, n_repeats=3, workers=15
+
+======================================================================
+🧬 STAGE: vision_flock  ({'sensor_mode': 'vision', 'n_agents': 10, 'n_repeats': 3, 'max_battery': None, 'min_battery': None, 'nx': None, 'ny': None, 'use_battery_sensor': True, 'wind_enabled': False, 'gradient_map_path': None, 'freq_choices': (), 'gate_enabled': False, 'n_gates': 1, 'finish_x_choices': (), 'gate_opening_width': 1.0, 'post_gate_distance': 1.5, 'max_steps': 400})
+======================================================================
+(15_w,30)-aCMA-ES (mu_w=8.6,w_1=20%) in dimension 960 (seed=43, Sat Sep  5 16:20:09 2026)
+✅ Gen 001/100 | Best Loss (neg eff): 1.6095 | elite best: 1.6095 | 16.0s
+✅ Gen 002/100 | Best Loss (neg eff): 1.4929 | elite best: 1.4929 | 16.2s
+✅ Gen 003/100 | Best Loss (neg eff): 1.4032 | elite best: 1.4032 | 12.5s
+✅ Gen 004/100 | Best Loss (neg eff): 0.9432 | elite best: 0.9432 | 19.7s
+✅ Gen 005/100 | Best Loss (neg eff): 1.0073 | elite best: 0.9432 | 14.7s
+✅ Gen 006/100 | Best Loss (neg eff): 0.6413 | elite best: 0.6413 | 17.3s
+✅ Gen 007/100 | Best Loss (neg eff): 0.6468 | elite best: 0.6413 | 16.3s
+✅ Gen 008/100 | Best Loss (neg eff): 0.3715 | elite best: 0.3715 | 18.3s
+✅ Gen 009/100 | Best Loss (neg eff): 0.2318 | elite best: 0.2318 | 13.0s
+✅ Gen 010/100 | Best Loss (neg eff): -0.1655 | elite best: -0.1655 | 20.0s
+✅ Gen 011/100 | Best Loss (neg eff): -0.3270 | elite best: -0.3270 | 13.1s
+✅ Gen 012/100 | Best Loss (neg eff): -0.5726 | elite best: -0.5726 | 19.0s
+✅ Gen 013/100 | Best Loss (neg eff): -0.6315 | elite best: -0.6315 | 18.8s
+✅ Gen 014/100 | Best Loss (neg eff): -0.6290 | elite best: -0.6315 | 13.4s
+✅ Gen 015/100 | Best Loss (neg eff): -0.8815 | elite best: -0.8815 | 16.7s
+✅ Gen 016/100 | Best Loss (neg eff): -0.9502 | elite best: -0.9502 | 18.9s
+✅ Gen 017/100 | Best Loss (neg eff): -0.8919 | elite best: -0.9502 | 15.6s
+✅ Gen 018/100 | Best Loss (neg eff): -0.9576 | elite best: -0.9576 | 17.6s
+✅ Gen 019/100 | Best Loss (neg eff): -1.2194 | elite best: -1.2194 | 13.3s
+✅ Gen 020/100 | Best Loss (neg eff): -1.2223 | elite best: -1.2223 | 20.4s
+✅ Gen 021/100 | Best Loss (neg eff): -1.4567 | elite best: -1.4567 | 15.0s
+✅ Gen 022/100 | Best Loss (neg eff): -1.2626 | elite best: -1.4567 | 14.6s
+✅ Gen 023/100 | Best Loss (neg eff): -1.3392 | elite best: -1.4567 | 20.2s
+✅ Gen 024/100 | Best Loss (neg eff): -1.4715 | elite best: -1.4715 | 13.5s
+✅ Gen 025/100 | Best Loss (neg eff): -1.4416 | elite best: -1.4715 | 13.4s
+✅ Gen 026/100 | Best Loss (neg eff): -1.5941 | elite best: -1.5941 | 19.8s
+✅ Gen 027/100 | Best Loss (neg eff): -1.6359 | elite best: -1.6359 | 14.2s
+✅ Gen 028/100 | Best Loss (neg eff): -1.6994 | elite best: -1.6994 | 16.2s
+✅ Gen 029/100 | Best Loss (neg eff): -1.7247 | elite best: -1.7247 | 18.3s
+✅ Gen 030/100 | Best Loss (neg eff): -1.7622 | elite best: -1.7622 | 13.4s
+✅ Gen 031/100 | Best Loss (neg eff): -1.8197 | elite best: -1.8197 | 18.8s
+✅ Gen 032/100 | Best Loss (neg eff): -1.7856 | elite best: -1.8197 | 15.7s
+✅ Gen 033/100 | Best Loss (neg eff): -1.7869 | elite best: -1.8197 | 14.0s
+✅ Gen 034/100 | Best Loss (neg eff): -1.7476 | elite best: -1.8197 | 19.8s
+✅ Gen 035/100 | Best Loss (neg eff): -1.7932 | elite best: -1.8197 | 14.7s
+✅ Gen 036/100 | Best Loss (neg eff): -1.8702 | elite best: -1.8702 | 17.1s
+✅ Gen 037/100 | Best Loss (neg eff): -1.8761 | elite best: -1.8761 | 20.1s
+✅ Gen 038/100 | Best Loss (neg eff): -1.9143 | elite best: -1.9143 | 13.7s
+✅ Gen 039/100 | Best Loss (neg eff): -1.9264 | elite best: -1.9264 | 19.7s
+✅ Gen 040/100 | Best Loss (neg eff): -1.8987 | elite best: -1.9264 | 13.2s
+✅ Gen 041/100 | Best Loss (neg eff): -1.8727 | elite best: -1.9264 | 17.1s
+✅ Gen 042/100 | Best Loss (neg eff): -1.9521 | elite best: -1.9521 | 17.9s
+✅ Gen 043/100 | Best Loss (neg eff): -2.0486 | elite best: -2.0486 | 13.9s
+✅ Gen 044/100 | Best Loss (neg eff): -2.0735 | elite best: -2.0735 | 18.9s
+✅ Gen 045/100 | Best Loss (neg eff): -2.0369 | elite best: -2.0735 | 15.8s
+✅ Gen 046/100 | Best Loss (neg eff): -2.0925 | elite best: -2.0925 | 15.7s
+✅ Gen 047/100 | Best Loss (neg eff): -2.1205 | elite best: -2.1205 | 19.4s
+✅ Gen 048/100 | Best Loss (neg eff): -2.1938 | elite best: -2.1938 | 13.5s
+✅ Gen 049/100 | Best Loss (neg eff): -2.0861 | elite best: -2.1938 | 19.2s
+✅ Gen 050/100 | Best Loss (neg eff): -2.0803 | elite best: -2.1938 | 14.2s
+✅ Gen 051/100 | Best Loss (neg eff): -2.1949 | elite best: -2.1949 | 15.4s
+✅ Gen 052/100 | Best Loss (neg eff): -2.2146 | elite best: -2.2146 | 21.6s

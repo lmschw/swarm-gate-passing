@@ -22,12 +22,17 @@ import numpy as np
 from . import config
 from . import sensor_model as sensor_model_quadrant
 from . import sensor_model_thymio
+from . import sensor_model_vision
 from .hebbian_controller import init_weights, hebbian_step
 from .wind_physics import (
     wrap_to_pi, RayTraceCircularRobots, dragforce, batterydrainage, _spawn_agents,
 )
 
-_SENSOR_MODULES = {"quadrant": sensor_model_quadrant, "thymio": sensor_model_thymio}
+_SENSOR_MODULES = {
+    "quadrant": sensor_model_quadrant,
+    "thymio": sensor_model_thymio,
+    "vision": sensor_model_vision,
+}
 
 
 @dataclass
@@ -174,7 +179,7 @@ def simulate_hebbian_episode(abcd_rules, seed=None, n_agents=None, wind_enabled=
                               max_battery=None, min_battery=None, nx=None, ny=None,
                               use_battery_sensor=True, sensor_mode="quadrant",
                               gradient_sensor=None, gates=None, finish_x=None, max_steps=None,
-                              distance_cap_slack=None,
+                              distance_cap_slack=None, crossing_success=False,
                               record_trajectory=False, record_battery=False):
     """Runs one full episode with the Hebbian ABCD controller, until any agent's
     battery depletes or (if finish_x is set) every agent has crossed finish_x.
@@ -215,6 +220,16 @@ def simulate_hebbian_episode(abcd_rules, seed=None, n_agents=None, wind_enabled=
         distance credit (e.g. for the maneuvering room a swarm regrouping
         after a gate needs) -- default config.GATE_DISTANCE_CAP_SLACK_M.
         Unused when finish_x is None.
+    crossing_success: if True, IGNORES finish_x's positional success check and
+        instead uses gates[0] as a crossing EVENT: each agent that has ever
+        crossed gates[0]'s x (in EITHER direction -- direction doesn't matter,
+        and only the FIRST crossing counts, so going back and forth earns
+        nothing further) is marked permanently done; `success` is 1.0 once
+        every agent has done so. For the "gates strewn in the environment, no
+        gradient map" curriculum (see config.VISION_STAGES/sensor_model_vision.py)
+        where there's no single well-defined "finish line" position to check
+        against, only a gate the swarm must find and pass through together.
+        Requires gates to be non-empty; uses only gates[0] (single-gate for now).
 
     Returns an EpisodeResult (telemetry populated only if record_trajectory/
     record_battery is set).
@@ -222,14 +237,16 @@ def simulate_hebbian_episode(abcd_rules, seed=None, n_agents=None, wind_enabled=
     if seed is not None:
         np.random.seed(seed)
 
-    if finish_x is None and gates:
+    if not crossing_success and finish_x is None and gates:
         finish_x = gates[-1].x_arena
     if distance_cap_slack is None:
         distance_cap_slack = config.GATE_DISTANCE_CAP_SLACK_M
+    if crossing_success and not gates:
+        raise ValueError("crossing_success=True requires a non-empty gates list")
 
     sensor_module = _SENSOR_MODULES[sensor_mode]
     n_inputs = config.n_inputs_for_sensor_mode(sensor_mode)
-    battery_idx = config.battery_row(n_inputs)
+    battery_idx = config.battery_row(n_inputs, sensor_mode)
 
     dt = config.DT
     n_agents = n_agents if n_agents is not None else config.HEBBIAN_N_AGENTS
@@ -265,6 +282,7 @@ def simulate_hebbian_episode(abcd_rules, seed=None, n_agents=None, wind_enabled=
     post_gate_cohesion_sum = 0.0
     post_gate_steps = 0
     last_gate_x = gates[-1].x_arena if gates else None
+    crossed_ever = np.zeros(n_agents, dtype=bool) if crossing_success else None
     batteryEmpty = False
     success = False
     positions_log = [agents[:, 0:2].copy()] if record_trajectory else None
@@ -284,7 +302,7 @@ def simulate_hebbian_episode(abcd_rules, seed=None, n_agents=None, wind_enabled=
         else:
             light_for_controller = None
 
-        sensor_inputs = sensor_module.get_sensor_data(agents, light_intensity=light_for_controller)
+        sensor_inputs = sensor_module.get_sensor_data(agents, light_intensity=light_for_controller, gates=gates)
         if not use_battery_sensor:
             sensor_inputs[battery_idx, :] = 0.0
         for i in range(n_agents):
@@ -294,6 +312,7 @@ def simulate_hebbian_episode(abcd_rules, seed=None, n_agents=None, wind_enabled=
             vel[i, 1] = w_i
             weights[i] = (w1n, w2n, w3n)
 
+        x_before_move = agents[:, 0].copy()
         vel_actual, agents, xRange, pair_hits, wall_hits, mean_pairwise_dist, _ = _move(
             agents, vel, dt, n_agents, min_dist, walls, gates=gates, wind_enabled=wind_enabled)
         pair_collision_counter += pair_hits
@@ -302,6 +321,17 @@ def simulate_hebbian_episode(abcd_rules, seed=None, n_agents=None, wind_enabled=
         speed_sum += float(np.mean(vel_actual[:, 0]))
         stopped_steps_counter += int(np.sum(vel_actual[:, 0] < config.GATE_STOP_SPEED_THRESHOLD_MPS))
         steps += 1
+        if crossing_success:
+            gate0 = gates[0]
+            crossed_x = ((x_before_move - gate0.x_arena) * (agents[:, 0] - gate0.x_arena)) < 0.0
+            # For a non-blocking gate ("just a pole on either side"), agents can cross
+            # gate0.x_arena anywhere -- only a crossing that also lands within the
+            # opening counts as "through the gate". For a blocking gate this check is
+            # redundant (any crossing that got this far was already forced into the
+            # opening by _move()) but harmless, so it's applied unconditionally.
+            within_opening = np.array([gate0.within_opening(yy) for yy in agents[:, 1]])
+            crossed_this_step = crossed_x & within_opening
+            crossed_ever |= crossed_this_step
         if last_gate_x is not None and np.all(agents[:, 0] < last_gate_x):
             post_gate_cohesion_sum += mean_pairwise_dist
             post_gate_steps += 1
@@ -319,7 +349,9 @@ def simulate_hebbian_episode(abcd_rules, seed=None, n_agents=None, wind_enabled=
             battery_log.append(agents[:, 3].copy())
 
         batteryEmpty = np.any(agents[:, 3] <= 0.0)
-        if finish_x is not None:
+        if crossing_success:
+            success = bool(np.all(crossed_ever))
+        elif finish_x is not None:
             success = bool(np.all(agents[:, 0] < finish_x))
 
     average_batt = np.mean(agents[:, 3])

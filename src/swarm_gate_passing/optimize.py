@@ -56,7 +56,7 @@ from . import config
 from .hebbian_controller import unflatten_abcd
 from .simulation import simulate_hebbian_episode, stage_fitness
 from .fitness_plot import FitnessPlotter
-from .environment import GradientSensor, evenly_spaced_gates, render_path_map
+from .environment import GradientSensor, evenly_spaced_gates, random_gate, render_path_map
 
 
 @dataclass(frozen=True)
@@ -88,6 +88,15 @@ def _make_episode_environment(cfg: EvalConfig, rng: np.random.Generator):
     domain randomization when configured. A fresh map is rendered per call
     (cheap -- a few ms at this resolution) rather than cached, so each repeat
     can get an independently-sampled wavelength."""
+    if cfg.stage in config.VISION_STAGES:
+        # No gradient map at all -- a single gate "strewn" at a random position,
+        # unrelated to any path (see environment.gate.random_gate).
+        gates = None
+        if cfg.stage in config.VISION_GATE_ENABLED_STAGES:
+            gates = [random_gate(rng, cfg.gate_opening_width,
+                                  config.GATE_RANDOM_X_BOUNDS, config.GATE_RANDOM_Y_BOUNDS)]
+        return None, gates, None
+
     world_w = config.X_RANGE[1] - config.X_RANGE[0]
     world_h = config.Y_RANGE[1] - config.Y_RANGE[0]
 
@@ -136,12 +145,14 @@ def evaluate_candidate(genome, candidate_id, cfg: EvalConfig):
         seed = cfg.seed_base + candidate_id * 1000 + r
         try:
             gradient_sensor, gates, finish_x = _make_episode_environment(cfg, env_rng)
+            crossing_success = cfg.stage in config.VISION_GATE_ENABLED_STAGES
             result = simulate_hebbian_episode(
                 rules, seed=seed, n_agents=cfg.n_agents, wind_enabled=cfg.wind_enabled,
                 max_battery=cfg.max_battery, min_battery=cfg.min_battery,
                 nx=cfg.nx, ny=cfg.ny, use_battery_sensor=cfg.use_battery_sensor,
                 sensor_mode=cfg.sensor_mode, gradient_sensor=gradient_sensor,
-                gates=gates, finish_x=finish_x, max_steps=cfg.max_steps)
+                gates=gates, finish_x=finish_x, max_steps=cfg.max_steps,
+                crossing_success=crossing_success)
             effs.append(stage_fitness(result, cfg.stage))
         except Exception as e:
             print(f"\n⚠️  Candidate {candidate_id} repeat {r} failed "
@@ -171,24 +182,41 @@ def run_stage(stage, x0, plotter, popsize, maxiter, cfg_kwargs, output_dir, name
 
     gen = 0
     fitness_history = []
+    elite = []  # up to HEBBIAN_ELITISM_COUNT (loss, genome) pairs, sorted best-first, best ever seen
     t_stage_start = time.time()
     with ProcessPoolExecutor(max_workers=n_workers) as pool:
         while not es.stop():
             gen += 1
             t_gen_start = time.time()
             solutions = es.ask()
+            # Force-include the best-ever genomes in this generation's candidate pool
+            # (replacing that many CMA-ES-sampled ones) so a rare discovery can never
+            # simply be dropped by the search distribution drifting away from it --
+            # see config.HEBBIAN_ELITISM_COUNT. Re-evaluated fresh every generation
+            # (not reusing the old fitness value), since conditions are randomized
+            # per episode and a stale score wouldn't be a fair, up-to-date comparison.
+            for k in range(min(len(elite), len(solutions))):
+                solutions[-(k + 1)] = elite[k][1].copy()
             cfg = EvalConfig(stage=stage, seed_base=(gen - 1) * popsize, **cfg_kwargs)
             futures = [pool.submit(evaluate_candidate, sol, i, cfg) for i, sol in enumerate(solutions)]
             fitness_values = [f.result() for f in futures]
             es.tell(solutions, fitness_values)
+
+            elite = sorted(elite + list(zip(fitness_values, (s.copy() for s in solutions))),
+                            key=lambda t: t[0])[:config.HEBBIAN_ELITISM_COUNT]
+
             plotter.update(gen, fitness_values)
             fitness_history.append(float(min(fitness_values)))
             print(f"✅ Gen {gen:03d}/{maxiter} | Best Loss (neg eff): {min(fitness_values):.4f} "
-                  f"| {time.time() - t_gen_start:.1f}s")
+                  f"| elite best: {elite[0][0]:.4f} | {time.time() - t_gen_start:.1f}s")
 
     print(f"   (stage wall-clock: {time.time() - t_stage_start:.1f}s)")
-    best_genome = es.result[0]
-    best_loss = float(es.result[1])
+    # Use our own elite-tracking (freshly re-evaluated every generation it survives)
+    # rather than cma's own internal es.result bookkeeping, whose recorded fitness for
+    # the best-ever solution can be stale/lucky from whenever it was first sampled --
+    # elite[0] reflects at least one recent, fair re-evaluation.
+    best_genome = elite[0][1] if elite else es.result[0]
+    best_loss = float(elite[0][0]) if elite else float(es.result[1])
 
     genome_name = f"hebbian_{stage}{name_suffix}_best.npy"
     history_name = f"hebbian_{stage}{name_suffix}_history.json"
@@ -208,6 +236,10 @@ def train_one_seed(seed, output_dir, stages, popsize, maxiter, n_agents, n_repea
                     n_workers, init_genome_path=None):
     os.makedirs(output_dir, exist_ok=True)
     np.random.seed(seed)
+    if any(s in config.VISION_STAGES for s in stages) and sensor_mode != "vision":
+        print(f"⚠️  {[s for s in stages if s in config.VISION_STAGES]} expect --sensor-mode vision "
+              f"(the only mode that can perceive a gate at all without a gradient map) -- got "
+              f"'{sensor_mode}'. Continuing, but the gate will likely be effectively invisible.")
     name_suffix = "_nosensor" if no_battery_sensor else ""
     if sensor_mode != "quadrant":
         name_suffix += f"_{sensor_mode}"
@@ -227,6 +259,7 @@ def train_one_seed(seed, output_dir, stages, popsize, maxiter, n_agents, n_repea
         wind_enabled = config.HEBBIAN_STAGE_WIND_ENABLED[stage]
         gate_enabled = stage in config.GATE_ENABLED_STAGES
         is_gate_task_stage = stage in config.GATE_STAGES
+        is_vision_task_stage = stage in config.VISION_STAGES
         this_freq_choices = tuple(freq_choices) if is_gate_task_stage else ()
         this_gate_x_choices = tuple(gate_x_choices) if this_freq_choices else ()
         cfg_kwargs = dict(
@@ -237,7 +270,7 @@ def train_one_seed(seed, output_dir, stages, popsize, maxiter, n_agents, n_repea
             freq_choices=this_freq_choices, gate_enabled=gate_enabled, n_gates=n_gates,
             finish_x_choices=this_gate_x_choices, gate_opening_width=gate_opening_width,
             post_gate_distance=post_gate_distance,
-            max_steps=config.GATE_MAX_STEPS if is_gate_task_stage else None,
+            max_steps=config.GATE_MAX_STEPS if (is_gate_task_stage or is_vision_task_stage) else None,
         )
         genome = run_stage(stage, genome, plotter, popsize, maxiter, cfg_kwargs, output_dir,
                             name_suffix, n_workers, cma_seed=seed + stage_idx + 1)

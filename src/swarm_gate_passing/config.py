@@ -113,10 +113,22 @@ HEBBIAN_WEIGHT_INIT_RANGE = 1.0   # NN weights (not the ABCD genome) initialized
 # "thymio": 7 raw Thymio-II IR proximity readings (no neighbor identity/bearing,
 #     wall and neighbor reflectance indistinguishable) + battery + heading +
 #     gradient light = 10 inputs, ported from thymio_ir_variant/sensor_model.py.
-# Both put battery/heading/light in the same last-3 positions (see
-# BATTERY_ROW/HEADING_ROW/LIGHT_ROW below), so simulation.py can ablate/feed them
-# generically regardless of which sensor module is in use.
-SENSOR_MODES = ("quadrant", "thymio")
+# "vision": 4 quadrants x (distance, bearing), like "quadrant", but range-limited
+#     to VISION_RANGE and genuinely occlusion-aware (another agent's body between
+#     the sensor and a candidate blocks it) + nearest visible gate landmark
+#     (distance, bearing) + battery + heading = 12 inputs. No gradient light at
+#     all -- see sensor_model_vision.py's module docstring for why.
+# Each mode's trailing inputs are registered in _SENSOR_MODE_TRAILING below (not
+# every mode has every trailing channel -- "vision" has no light channel), so
+# simulation.py can ablate/feed battery/heading generically via battery_row()/
+# heading_row() regardless of which sensor module is in use.
+SENSOR_MODES = ("quadrant", "thymio", "vision")
+
+_SENSOR_MODE_TRAILING = {
+    "quadrant": ("battery", "heading", "light"),
+    "thymio": ("battery", "heading", "light"),
+    "vision": ("battery", "heading"),
+}
 
 
 def n_inputs_for_sensor_mode(sensor_mode):
@@ -124,19 +136,28 @@ def n_inputs_for_sensor_mode(sensor_mode):
         return 11
     if sensor_mode == "thymio":
         return 10
+    if sensor_mode == "vision":
+        return 12
     raise ValueError(f"unknown sensor_mode {sensor_mode!r}, choose from {SENSOR_MODES}")
 
 
-def battery_row(n_inputs):
-    return n_inputs - 3
+def _trailing_row(n_inputs, channel, sensor_mode):
+    trailing = _SENSOR_MODE_TRAILING[sensor_mode]
+    if channel not in trailing:
+        return None
+    return n_inputs - len(trailing) + trailing.index(channel)
 
 
-def heading_row(n_inputs):
-    return n_inputs - 2
+def battery_row(n_inputs, sensor_mode="quadrant"):
+    return _trailing_row(n_inputs, "battery", sensor_mode)
 
 
-def light_row(n_inputs):
-    return n_inputs - 1
+def heading_row(n_inputs, sensor_mode="quadrant"):
+    return _trailing_row(n_inputs, "heading", sensor_mode)
+
+
+def light_row(n_inputs, sensor_mode="quadrant"):
+    return _trailing_row(n_inputs, "light", sensor_mode)
 
 
 def n_abcd_for(n_inputs, n_hidden=None, n_outputs=None):
@@ -172,6 +193,15 @@ HEBBIAN_CMAES_POPSIZE = 30        # lambda
 HEBBIAN_CMAES_GEN_MAX = 100       # Ngen, termination condition, PER STAGE
 HEBBIAN_CMAES_SIGMA0 = 0.3        # initial covariance/step-size
 HEBBIAN_N_REPEATS = 3             # simulations per candidate (different seeds); fitness = median
+# Plain (mu/mu_w, lambda)-CMA-ES has no elitism: the best genome ever found can
+# simply never be sampled again if the search distribution drifts away from it,
+# especially under noisy fitness (median of only 3 stochastic episodes) where a
+# rare good discovery (e.g. successfully finding and passing a randomly-placed
+# gate) is easy to lose. Each generation, the best HEBBIAN_ELITISM_COUNT genomes
+# found so far (by any generation) are force-included in that generation's
+# candidate pool (replacing that many CMA-ES-sampled ones) and re-evaluated
+# fresh -- see optimize.run_stage. 0 disables this (plain CMA-ES).
+HEBBIAN_ELITISM_COUNT = 2
 
 HEBBIAN_BATCH_SEEDS = [42, 123, 777, 2026, 888, 99, 412, 555, 1010, 8432]
 
@@ -254,6 +284,22 @@ GATE_MAX_STEPS = 400
 GATE_FREQ_CHOICES = (2.0, 4.0, 6.0)
 GATE_FINISH_X_CHOICES = (-2.5, -3.5, -4.5)
 
+# --- Vision-based curriculum (no gradient map) ---
+# A different combination of this project's pieces: instead of a rendered path
+# guiding the swarm to a gate, agents get a limited-range, occlusion-aware
+# "vision" sensor (sensor_model_vision.py) that can directly perceive nearby
+# neighbors AND a gate's opening-edge landmarks, and the gate itself is placed
+# uniformly at random ("strewn") rather than centered on any path. Confirmed by
+# direct video inspection that the gradient-guided curriculum, even after
+# fixing the physics-bypass bug and rebalancing fitness magnitudes, produced
+# swarms that mostly wall-hugged into the gate by luck rather than actually
+# navigating -- this is a genuinely different environment/task, not a tweak.
+VISION_RANGE = 2.0                # meters; matches the earlier "quadrant" mode's
+                                   # HEBBIAN_SENSING_RADIUS order of magnitude, but
+                                   # now genuinely occlusion-limited, not just range-limited
+GATE_RANDOM_X_BOUNDS = (-3.0, 3.0)  # gate x placement bounds, kept off the hard arena edges
+GATE_RANDOM_Y_BOUNDS = (-3.0, 3.0)  # gate y-center placement bounds, same margin
+
 # --- Staged curricula ---
 # Two independent curricula: the original energy-efficiency one (Table 2's 3
 # stages, plus the fixed-map gradient-following stage added when this project
@@ -270,13 +316,23 @@ GATE_FINISH_X_CHOICES = (-2.5, -3.5, -4.5)
 # rewarding capped progress-to-goal + the success bonus + post-gate
 # regrouping) -> flock_gate_speed (+ reward speed). Only flock_gate and
 # flock_gate_speed physically enable a gate (GATE_ENABLED_STAGES) -- the
-# earlier stages have nothing to pass yet. Curricula don't chain into each
-# other -- each --stages run starts its own fresh genome unless --init-genome
-# is given.
+# earlier stages have nothing to pass yet.
+#
+# VISION_STAGES is a separate, simpler 2-step curriculum for the vision-based
+# (no gradient map) task above: vision_flock (move together + speed, on the
+# new occlusion-aware sensor) -> vision_gate (+ find and pass a randomly-
+# "strewn" gate together, rewarded only once EVERY agent has crossed it at
+# least once -- see simulate_hebbian_episode's crossing_success). Meant to be
+# run with --sensor-mode vision (optimize.py warns if it isn't).
+#
+# Curricula don't chain into each other -- each --stages run starts its own
+# fresh genome unless --init-genome is given.
 ENERGY_STAGES = ("walk_left", "save_battery_avoid_wall", "save_battery_avoid_all", "follow_gradient_path")
 GATE_STAGES = ("flock_cohesion", "flock_gradient", "flock_gate", "flock_gate_speed")
 GATE_ENABLED_STAGES = ("flock_gate", "flock_gate_speed")
-HEBBIAN_STAGES = ENERGY_STAGES + GATE_STAGES
+VISION_STAGES = ("vision_flock", "vision_gate")
+VISION_GATE_ENABLED_STAGES = ("vision_gate",)
+HEBBIAN_STAGES = ENERGY_STAGES + GATE_STAGES + VISION_STAGES
 HEBBIAN_STAGE_WIND_ENABLED = {
     "walk_left": False,
     "save_battery_avoid_wall": True,
@@ -286,6 +342,8 @@ HEBBIAN_STAGE_WIND_ENABLED = {
     "flock_gradient": GATE_WIND_ENABLED,
     "flock_gate": GATE_WIND_ENABLED,
     "flock_gate_speed": GATE_WIND_ENABLED,
+    "vision_flock": GATE_WIND_ENABLED,
+    "vision_gate": GATE_WIND_ENABLED,
 }
 # Per-stage fitness weights, all optional (a missing/None key means that term is
 # entirely absent, and distance_w explicitly set to 0.0 means "off" too, since it's
@@ -344,6 +402,27 @@ HEBBIAN_STAGE_FITNESS_WEIGHTS = {
         "post_gate_cohesion_w": GATE_POST_GATE_COHESION_WEIGHT,
         "speed_w": GATE_SPEED_WEIGHT,
         "stopped_w": GATE_STOPPED_TIME_WEIGHT,
+    },
+    # --- vision curriculum: no gradient map, so no path_deviation/path_w term at
+    # all (there's no path); no distance_w either, since there's no single known
+    # target position to measure progress toward until the gate is actually found --
+    # cohesion + speed + not-stopping do the work of encouraging useful movement.
+    "vision_flock": {
+        "distance_w": 0.0,
+        "collision_w": GATE_COLLISION_WEIGHT, "wall_col_mult": GATE_WALL_COL_MULT,
+        "include_inter_robot_collision": True,
+        "cohesion_w": GATE_COHESION_WEIGHT,
+        "speed_w": GATE_SPEED_WEIGHT,
+        "stopped_w": GATE_STOPPED_TIME_WEIGHT,
+    },
+    "vision_gate": {
+        "distance_w": 0.0,
+        "collision_w": GATE_COLLISION_WEIGHT, "wall_col_mult": GATE_WALL_COL_MULT,
+        "include_inter_robot_collision": True,
+        "cohesion_w": GATE_COHESION_WEIGHT,
+        "speed_w": GATE_SPEED_WEIGHT,
+        "stopped_w": GATE_STOPPED_TIME_WEIGHT,
+        "success_bonus": GATE_SUCCESS_BONUS,
     },
 }
 

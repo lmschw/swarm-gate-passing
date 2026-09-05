@@ -48,11 +48,14 @@ def _wall_ray_distances(x, y, global_dir):
     return dist
 
 
-def get_sensor_data(agents, ir_range=None, light_intensity=None):
+def get_sensor_data(agents, ir_range=None, light_intensity=None, gates=None):
     """agents: (n_agents, 4) array of [x, y, heading, battery].
     light_intensity: optional (n_agents,) array of raw [0, 255] gradient-map
         readings (see environment.sensing.GradientSensor.read); None feeds a
         neutral 0.0 (see sensor_model.get_sensor_data's own docstring).
+    gates: IGNORED -- accepted only so simulation.py can call every sensor
+        module's get_sensor_data with the same keyword arguments regardless of
+        sensor_mode (see sensor_model_vision.py, which does use it).
 
     Returns a (10, n_agents) array: 7 IR intensities (config.THYMIO_IR_ANGLES
     order, each in [0, 1]) + own battery + own heading + gradient light.

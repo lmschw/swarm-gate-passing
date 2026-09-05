@@ -7,7 +7,7 @@ from .path_maps import (
     save_map,
 )
 from .sensing import GradientSensor
-from .gate import Gate, evenly_spaced_gates
+from .gate import Gate, evenly_spaced_gates, random_gate
 
 __all__ = [
     "PATH_FUNCTIONS",
@@ -19,4 +19,5 @@ __all__ = [
     "GradientSensor",
     "Gate",
     "evenly_spaced_gates",
+    "random_gate",
 ]
