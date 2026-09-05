@@ -15,9 +15,10 @@ Two further pieces layer on top of that combination:
     to the idealized quadrant distance/bearing sensor ("quadrant" mode, the
     original default -- see sensor_model.py vs sensor_model_thymio.py).
   - A physical gate barrier (environment/gate.py) placed across the arena with
-    its opening centered on the path, and a 2-stage curriculum
-    (follow_gradient_no_gate -> gate_passing) that trains a swarm to pass
-    through it -- see simulation.py's EpisodeResult/stage_fitness.
+    its opening centered on the path, and a 4-stage incremental curriculum
+    (flock_cohesion -> flock_gradient -> flock_gate -> flock_gate_speed) that
+    trains a swarm to pass through it one skill at a time -- see
+    simulation.py's EpisodeResult/stage_fitness.
 """
 import math
 
@@ -191,43 +192,53 @@ GATE_WIND_ENABLED = False
 GATE_OPENING_WIDTH_M = 1.0
 GATE_COLLISION_WEIGHT = 250.0     # same convention/scale as save_battery_avoid_all's collision_w
 GATE_WALL_COL_MULT = 3.0          # gate-barrier hits are counted together with arena-wall hits
-# Distance weight for THIS task, overriding HEBBIAN_EFF_DISTANCE_WEIGHT (16.0 -- calibrated for
-# the energy-efficiency curriculum, where distance genuinely should dominate a weak battery
-# signal). At 16.0 here, a few meters of raw progress swamps path/cohesion penalties regardless
-# of how those are tuned (both are single-digit meters over single-digit weights), and since
-# the arena's Y-walls only clamp Y (never stop X-progress), "charge straight into a wall, keep
-# moving" becomes a good strategy with essentially no incentive to steer toward the gate at all
-# -- confirmed in practice: the first trained genomes fully ignored the gradient and each other,
-# relying on wall-following into the gate opening by luck. Lowered 4x so the other terms below
-# can actually compete.
-GATE_DISTANCE_WEIGHT = 4.0
-GATE_PATH_DEVIATION_WEIGHT = 0.5   # eff -= mean_path_deviation_m / this (was 2.0 -- too weak to
-                                    # outweigh even the reduced distance term above)
-GATE_COHESION_WEIGHT = 1.5         # eff -= cohesion_dist / this (mean pairwise inter-agent distance,
-                                    # averaged over the WHOLE episode; was 5.0)
-GATE_SPEED_WEIGHT = 0.02           # eff += mean_speed_mps / this
-GATE_SUCCESS_BONUS = 80.0          # eff += this iff EVERY agent crossed the finish line (was 20.0 --
-                                    # at that value even ~1.3m of extra raw distance was worth as much
-                                    # as fully succeeding; this should be the single best thing a
-                                    # genome can achieve, not a rounding error next to distance)
+
+# --- Incremental curriculum weights ---
+# Each stage below ADDS one new fitness component to the previous stage's, rather
+# than training all of cohesion + gradient-following + gate-passing + speed at once
+# from a random genome -- confirmed necessary in practice: a single-shot combined
+# fitness (even after fixing a physics bug and rebalancing magnitudes) produced
+# genomes that neither followed the gradient nor stayed together. cohesion_dist and
+# path_deviation_m are both already in meters and empirically similar magnitude
+# (roughly 1-4m), so both get a plain weight of 1.0 -- i.e. eff -= metric directly,
+# no rescaling -- rather than guessing a ratio between them. distance_w/success_bonus
+# are introduced only once "reaching the gate" becomes the goal (stage 3): distance
+# credit is capped (dist_travelled_capped, GATE_DISTANCE_CAP_SLACK_M/GATE_MAX_STEPS
+# below) so it acts purely as a smooth "getting closer" gradient rather than
+# something a genome can farm by cruising indefinitely, and success_bonus is set an
+# order of magnitude above the other terms' typical range so genuinely succeeding is
+# unambiguously the best outcome. speed_w is introduced last, and kept small (a
+# polish/tiebreaker, not something worth trading cohesion or accuracy for).
+GATE_COHESION_WEIGHT = 1.0          # eff -= cohesion_dist / this (mean pairwise distance, meters)
+GATE_PATH_DEVIATION_WEIGHT = 1.0    # eff -= mean_path_deviation_m / this (meters)
+GATE_POST_GATE_COHESION_WEIGHT = 1.0  # eff -= post_gate_cohesion_dist / this (meters, regrouping phase only)
+GATE_DISTANCE_WEIGHT = 1.0          # eff += dist_travelled_capped / this (meters, capped -- see below)
+GATE_SPEED_WEIGHT = 0.05            # eff += mean_speed_mps / this (mean_speed ~0.06-0.2 m/s observed
+                                     # -> contributes roughly 1-4, comparable to the other terms, not dominant)
+GATE_SUCCESS_BONUS = 30.0           # eff += this iff EVERY agent crossed the finish line -- roughly an
+                                     # order of magnitude above the smooth terms' typical spread, so success
+                                     # is unambiguously better than any amount of near-miss behavior
+
 # The finish line ("success") sits this far past the LAST gate, not at it -- a gate can
 # physically scatter the swarm as individuals squeeze through separately, so requiring
 # them to keep moving together for a bit further is what actually tests (and rewards)
 # regrouping, rather than crediting "everyone got through" the instant they're all
-# individually clear of the barrier. Only applies to "gate_passing" (no gate exists in
-# "follow_gradient_no_gate", so its finish line sits at the sampled x directly).
+# individually clear of the barrier. Only relevant once a gate exists (stage 3+).
 GATE_POST_GATE_DISTANCE_M = 1.5
-GATE_POST_GATE_COHESION_WEIGHT = 1.5   # eff -= post_gate_cohesion_dist / this (gate_passing only;
-                                       # mean pairwise distance measured ONLY once the swarm is
-                                       # past the last gate, i.e. specifically the regrouping phase --
-                                       # distinct from GATE_COHESION_WEIGHT's whole-episode average,
-                                       # so it's possible to see the two diverge: e.g. tight in transit
-                                       # but poor at regrouping, or vice versa). Was 5.0.
+# Distance-reward cap and episode-length cap: without these, a genome that never
+# attempts the (hard, all-or-nothing) success bonus can still rack up large reward by
+# simply running the full battery-implied ~1000 steps heading roughly forward --
+# confirmed in practice (an early reweighted-but-uncapped genome reached
+# dist_travelled=57.8m against a real target of ~4-6.5m, by cruising the entire
+# episode). GATE_MAX_STEPS also cuts typical episode cost substantially: covering the
+# ~7m worst-case target distance at the observed ~0.1-0.16 m/s takes on the order of
+# 100-140 steps, so 400 (200 simulated seconds) is a generous multiple of that for
+# real maneuvering, not a tight ceiling.
+GATE_DISTANCE_CAP_SLACK_M = 1.0
+GATE_MAX_STEPS = 400
 # Domain randomization: each simulated episode samples one wavelength (all stages)
-# and, in "gate_passing" only, one finish-line/gate placement -- so the evolved
-# genome doesn't just memorize a single layout. Placements are chosen as fractions
-# of the arena's travel distance from the spawn point (0, 0), not fixed absolute
-# positions, so they scale sensibly whatever the arena size.
+# and, once a gate exists, one gate placement -- so the evolved genome doesn't just
+# memorize a single layout.
 GATE_FREQ_CHOICES = (2.0, 4.0, 6.0)
 GATE_FINISH_X_CHOICES = (-2.5, -3.5, -4.5)
 
@@ -238,25 +249,41 @@ GATE_FINISH_X_CHOICES = (-2.5, -3.5, -4.5)
 # from the gate-passing curriculum this project's current work is about --
 # GATE_STAGES is what optimize.py's --stages defaults to; the energy stages
 # remain selectable (--stages walk_left ...) but are never run unless asked
-# for explicitly. Curricula don't chain into each other -- each --stages run
-# starts its own fresh genome unless --init-genome is given.
+# for explicitly.
+#
+# GATE_STAGES is itself a 4-step incremental curriculum, each stage's genome
+# seeded from the previous one (run_stage/train_one_seed always chains within
+# a single --stages invocation): flock_cohesion (move together) ->
+# flock_gradient (+ follow the gradient) -> flock_gate (+ pass the gate,
+# rewarding capped progress-to-goal + the success bonus + post-gate
+# regrouping) -> flock_gate_speed (+ reward speed). Only flock_gate and
+# flock_gate_speed physically enable a gate (GATE_ENABLED_STAGES) -- the
+# earlier stages have nothing to pass yet. Curricula don't chain into each
+# other -- each --stages run starts its own fresh genome unless --init-genome
+# is given.
 ENERGY_STAGES = ("walk_left", "save_battery_avoid_wall", "save_battery_avoid_all", "follow_gradient_path")
-GATE_STAGES = ("follow_gradient_no_gate", "gate_passing")
+GATE_STAGES = ("flock_cohesion", "flock_gradient", "flock_gate", "flock_gate_speed")
+GATE_ENABLED_STAGES = ("flock_gate", "flock_gate_speed")
 HEBBIAN_STAGES = ENERGY_STAGES + GATE_STAGES
 HEBBIAN_STAGE_WIND_ENABLED = {
     "walk_left": False,
     "save_battery_avoid_wall": True,
     "save_battery_avoid_all": True,
     "follow_gradient_path": True,
-    "follow_gradient_no_gate": GATE_WIND_ENABLED,
-    "gate_passing": GATE_WIND_ENABLED,
+    "flock_cohesion": GATE_WIND_ENABLED,
+    "flock_gradient": GATE_WIND_ENABLED,
+    "flock_gate": GATE_WIND_ENABLED,
+    "flock_gate_speed": GATE_WIND_ENABLED,
 }
 # Per-stage fitness weights, all optional (a missing/None key means that term is
-# entirely absent). See simulation.stage_fitness for the full formula. Every term
-# beyond distance is a divisor against the named metric (battery/collision/
-# proximity/cohesion/path_deviation: penalties, i.e. eff -= metric/weight; battery/
-# path/speed: rewards, i.e. eff += metric/weight), except success_bonus, which is
-# a flat additive bonus, and HEBBIAN_EFF_DISTANCE_WEIGHT (below), a multiplier.
+# entirely absent, and distance_w explicitly set to 0.0 means "off" too, since it's
+# a multiplier rather than a divisor -- see simulation.stage_fitness for the full
+# formula). Every term beyond distance is a divisor against the named metric
+# (battery/collision/proximity/cohesion/path_deviation/post_gate_cohesion: penalties,
+# i.e. eff -= metric/weight; battery/path/speed: rewards, i.e. eff += metric/weight),
+# except success_bonus (a flat additive bonus) and distance_w (a multiplier, default
+# HEBBIAN_EFF_DISTANCE_WEIGHT when the key is absent -- always set explicitly here,
+# including to 0.0, so no gate-curriculum stage accidentally inherits that default).
 HEBBIAN_STAGE_FITNESS_WEIGHTS = {
     "walk_left": {
         "wall_col_mult": 3.0,
@@ -272,24 +299,43 @@ HEBBIAN_STAGE_FITNESS_WEIGHTS = {
         "battery_w": 5.0, "collision_w": 250.0, "wall_col_mult": 3.0,
         "include_inter_robot_collision": True, "path_w": 5.0,
     },
-    "follow_gradient_no_gate": {
-        "distance_w": GATE_DISTANCE_WEIGHT,
+    # --- gate curriculum: each stage = the previous stage's dict + one new term ---
+    "flock_cohesion": {
+        "distance_w": 0.0,
         "collision_w": GATE_COLLISION_WEIGHT, "wall_col_mult": GATE_WALL_COL_MULT,
         "include_inter_robot_collision": True,
-        "path_deviation_w": GATE_PATH_DEVIATION_WEIGHT, "cohesion_w": GATE_COHESION_WEIGHT,
-        "speed_w": GATE_SPEED_WEIGHT, "success_bonus": GATE_SUCCESS_BONUS,
+        "cohesion_w": GATE_COHESION_WEIGHT,
     },
-    "gate_passing": {
+    "flock_gradient": {
+        "distance_w": 0.0,
+        "collision_w": GATE_COLLISION_WEIGHT, "wall_col_mult": GATE_WALL_COL_MULT,
+        "include_inter_robot_collision": True,
+        "cohesion_w": GATE_COHESION_WEIGHT,
+        "path_deviation_w": GATE_PATH_DEVIATION_WEIGHT,
+    },
+    "flock_gate": {
         "distance_w": GATE_DISTANCE_WEIGHT,
         "collision_w": GATE_COLLISION_WEIGHT, "wall_col_mult": GATE_WALL_COL_MULT,
         "include_inter_robot_collision": True,
-        "path_deviation_w": GATE_PATH_DEVIATION_WEIGHT, "cohesion_w": GATE_COHESION_WEIGHT,
-        "speed_w": GATE_SPEED_WEIGHT, "success_bonus": GATE_SUCCESS_BONUS,
+        "cohesion_w": GATE_COHESION_WEIGHT,
+        "path_deviation_w": GATE_PATH_DEVIATION_WEIGHT,
+        "success_bonus": GATE_SUCCESS_BONUS,
         "post_gate_cohesion_w": GATE_POST_GATE_COHESION_WEIGHT,
+    },
+    "flock_gate_speed": {
+        "distance_w": GATE_DISTANCE_WEIGHT,
+        "collision_w": GATE_COLLISION_WEIGHT, "wall_col_mult": GATE_WALL_COL_MULT,
+        "include_inter_robot_collision": True,
+        "cohesion_w": GATE_COHESION_WEIGHT,
+        "path_deviation_w": GATE_PATH_DEVIATION_WEIGHT,
+        "success_bonus": GATE_SUCCESS_BONUS,
+        "post_gate_cohesion_w": GATE_POST_GATE_COHESION_WEIGHT,
+        "speed_w": GATE_SPEED_WEIGHT,
     },
 }
 
 # Explicit distance weight -- without one, CMA-ES can cheaply preserve battery/avoid
 # risk by barely moving; this keeps distance-travelled (progress toward/through the
-# gate) dominant.
+# gate) dominant. Only used by the energy-efficiency curriculum -- every gate-
+# curriculum stage sets its own distance_w explicitly (including 0.0) above.
 HEBBIAN_EFF_DISTANCE_WEIGHT = 16.0

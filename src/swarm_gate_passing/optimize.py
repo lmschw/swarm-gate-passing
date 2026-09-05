@@ -13,7 +13,7 @@ unchanged in spirit; two things are new:
     by far the largest lever on wall-clock training time and the vendored
     version evaluated every candidate serially.
 
-Six stages across two curricula (each --stages run starts its own fresh genome
+Eight stages across two curricula (each --stages run starts its own fresh genome
 unless --init-genome is given; curricula don't chain into each other):
 
   Energy-efficiency curriculum (Table 2 + the gradient-path stage added when
@@ -23,11 +23,18 @@ unless --init-genome is given; curricula don't chain into each other):
     3. save_battery_avoid_all     -- + inter-robot collision penalty
     4. follow_gradient_path       -- + reward for staying on a fixed gradient map
 
-  Gate-passing curriculum (this project's second combination -- see
-  config.py's GATE_* constants and simulation.EpisodeResult/stage_fitness):
-    1. follow_gradient_no_gate    -- domain-randomized wavelength, no barrier
-    2. gate_passing               -- + a physical gate at a randomized placement,
-                                      + success bonus for all agents crossing it
+  Gate-passing curriculum (this project's second combination -- see config.py's
+  GATE_* constants and simulation.EpisodeResult/stage_fitness) -- an INCREMENTAL
+  curriculum: each stage's fitness is the previous stage's plus exactly one new
+  term, so CMA-ES only ever has to learn one new skill on top of a genome that
+  already has the earlier ones, rather than all four at once from scratch
+  (confirmed necessary in practice -- a combined single-shot fitness produced
+  genomes that neither followed the gradient nor stayed together):
+    1. flock_cohesion   -- fitness = stay close together (cohesion only)
+    2. flock_gradient   -- + follow the gradient (path-deviation penalty)
+    3. flock_gate       -- + reach/pass a physical gate (capped distance-to-goal,
+                             success bonus, post-gate regrouping)
+    4. flock_gate_speed -- + reward speed
 
 Each stage runs CMA-ES (population 30, 100 generations, sigma0=0.3 by default)
 with every candidate evaluated over 3 random seeds, taking the MEDIAN
@@ -73,6 +80,7 @@ class EvalConfig:
                                                 # finish-line choices directly (not gate_enabled)
     gate_opening_width: float = config.GATE_OPENING_WIDTH_M
     post_gate_distance: float = config.GATE_POST_GATE_DISTANCE_M
+    max_steps: Optional[int] = None
 
 
 def _make_episode_environment(cfg: EvalConfig, rng: np.random.Generator):
@@ -133,7 +141,7 @@ def evaluate_candidate(genome, candidate_id, cfg: EvalConfig):
                 max_battery=cfg.max_battery, min_battery=cfg.min_battery,
                 nx=cfg.nx, ny=cfg.ny, use_battery_sensor=cfg.use_battery_sensor,
                 sensor_mode=cfg.sensor_mode, gradient_sensor=gradient_sensor,
-                gates=gates, finish_x=finish_x)
+                gates=gates, finish_x=finish_x, max_steps=cfg.max_steps)
             effs.append(stage_fitness(result, cfg.stage))
         except Exception as e:
             print(f"\n⚠️  Candidate {candidate_id} repeat {r} failed "
@@ -209,8 +217,9 @@ def train_one_seed(seed, output_dir, stages, popsize, maxiter, n_agents, n_repea
 
     for stage in stages:
         wind_enabled = config.HEBBIAN_STAGE_WIND_ENABLED[stage]
-        gate_enabled = stage == "gate_passing"
-        this_freq_choices = tuple(freq_choices) if stage in ("follow_gradient_no_gate", "gate_passing") else ()
+        gate_enabled = stage in config.GATE_ENABLED_STAGES
+        is_gate_task_stage = stage in config.GATE_STAGES
+        this_freq_choices = tuple(freq_choices) if is_gate_task_stage else ()
         this_gate_x_choices = tuple(gate_x_choices) if this_freq_choices else ()
         cfg_kwargs = dict(
             sensor_mode=sensor_mode, n_agents=n_agents, n_repeats=n_repeats,
@@ -220,6 +229,7 @@ def train_one_seed(seed, output_dir, stages, popsize, maxiter, n_agents, n_repea
             freq_choices=this_freq_choices, gate_enabled=gate_enabled, n_gates=n_gates,
             finish_x_choices=this_gate_x_choices, gate_opening_width=gate_opening_width,
             post_gate_distance=post_gate_distance,
+            max_steps=config.GATE_MAX_STEPS if is_gate_task_stage else None,
         )
         genome = run_stage(stage, genome, plotter, popsize, maxiter, cfg_kwargs, output_dir,
                             name_suffix, n_workers)
@@ -240,8 +250,8 @@ def build_arg_parser():
     parser.add_argument("--output-dir", default="hebbian_results")
     parser.add_argument("--stages", nargs="+", default=list(config.GATE_STAGES),
                          choices=list(config.HEBBIAN_STAGES),
-                         help="Default is the gate-passing curriculum (follow_gradient_no_gate, "
-                              "gate_passing). The energy-efficiency curriculum (walk_left, "
+                         help=f"Default is the gate-passing curriculum {config.GATE_STAGES} (see module "
+                              "docstring). The energy-efficiency curriculum (walk_left, "
                               "save_battery_avoid_wall, save_battery_avoid_all, follow_gradient_path) "
                               "is a separate, unrelated task -- pass its stage names explicitly to run it.")
     parser.add_argument("--battery", type=float, default=None)
@@ -254,18 +264,18 @@ def build_arg_parser():
                          help="Fixed PNG gradient/path map for the 'follow_gradient_path' stage. "
                               "Ignored by every other stage.")
     parser.add_argument("--path-freq-choices", type=float, nargs="+", default=list(config.GATE_FREQ_CHOICES),
-                         help="Sine-curve wavelengths (as frequency) to sample per episode in "
-                              "'follow_gradient_no_gate'/'gate_passing' (domain randomization).")
+                         help=f"Sine-curve wavelengths (as frequency) to sample per episode in any of "
+                              f"{config.GATE_STAGES} (domain randomization).")
     parser.add_argument("--gate-x-choices", type=float, nargs="+", default=list(config.GATE_FINISH_X_CHOICES),
-                         help="Arena-frame x placements to sample per episode for the finish "
-                              "line ('follow_gradient_no_gate') / gate ('gate_passing').")
+                         help="Arena-frame x placements to sample per episode for the finish line "
+                              f"(pre-gate stages) / gate ({config.GATE_ENABLED_STAGES}).")
     parser.add_argument("--gate-opening-width", type=float, default=config.GATE_OPENING_WIDTH_M)
     parser.add_argument("--n-gates", type=int, default=1,
                          help="Number of gates evenly spaced along the track (from the spawn area "
-                              "to the randomly-chosen gate placement) in the 'gate_passing' stage. "
+                              f"to the randomly-chosen gate placement) in {config.GATE_ENABLED_STAGES}. "
                               "1 (default) reproduces the original single-gate behavior exactly.")
     parser.add_argument("--post-gate-distance", type=float, default=config.GATE_POST_GATE_DISTANCE_M,
-                         help="How far past the LAST gate (arena meters, 'gate_passing' stage only) "
+                         help=f"How far past the LAST gate (arena meters, {config.GATE_ENABLED_STAGES} only) "
                               "the success/finish line sits -- requires the swarm to keep traveling "
                               "together after the gate, not just individually clear it.")
     parser.add_argument("--init-genome", default=None, metavar="PATH")

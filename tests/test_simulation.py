@@ -215,6 +215,38 @@ def test_post_gate_cohesion_is_tracked_once_swarm_clears_gate():
     assert np.isfinite(eff)
 
 
+def test_max_steps_terminates_episode_before_battery_empty():
+    rules = unflatten_abcd(_random_genome(seed=7))
+    # plenty of battery (would otherwise run ~hundreds of steps) but capped hard at 5 steps
+    result = simulate_hebbian_episode(
+        rules, seed=20, n_agents=3, wind_enabled=False, max_battery=100.0, min_battery=100.0,
+        max_steps=5, record_trajectory=True)
+    assert result.telemetry["positions"].shape[0] == 6  # initial state + 5 steps
+    assert result.success == 0.0
+
+
+def test_distance_reward_is_capped_at_target_plus_slack_when_finish_x_is_set():
+    rules = unflatten_abcd(_random_genome(seed=8))
+    finish_x = -3.0  # spawn is near x=0, so target distance ~= 3.0
+    # generous battery/step budget so a genome that just cruises can rack up more raw
+    # distance than the target -- this is exactly the scenario the cap exists for.
+    result = simulate_hebbian_episode(
+        rules, seed=21, n_agents=3, wind_enabled=False, max_battery=50.0, min_battery=50.0,
+        finish_x=finish_x, max_steps=None)
+    target_plus_slack = abs(finish_x - config.SPAWN_MIDPOINT[0]) + config.GATE_DISTANCE_CAP_SLACK_M
+    assert result.dist_travelled_capped <= target_plus_slack + 1e-9
+    assert result.dist_travelled_capped <= result.dist_travelled + 1e-9
+    if result.dist_travelled > target_plus_slack:
+        assert result.dist_travelled_capped == pytest.approx(target_plus_slack)
+
+
+def test_distance_reward_uncapped_when_no_finish_x():
+    rules = unflatten_abcd(_random_genome(seed=9))
+    result = simulate_hebbian_episode(
+        rules, seed=22, n_agents=3, wind_enabled=False, max_battery=5.0, min_battery=5.0)
+    assert result.dist_travelled_capped == pytest.approx(result.dist_travelled)
+
+
 def test_success_flag_true_only_when_finish_line_crossed():
     rules = unflatten_abcd(_random_genome(seed=3))
     # finish_x far behind spawn (0,0): essentially unreachable in a short/no-wind episode with

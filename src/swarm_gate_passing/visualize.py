@@ -34,6 +34,9 @@ def main(argv=None):
     parser.add_argument("--n-agents", type=int, default=config.HEBBIAN_N_AGENTS)
     parser.add_argument("--wind-grid", type=int, default=None)
     parser.add_argument("--wind-enabled", action="store_true")
+    parser.add_argument("--max-steps", type=int, default=None,
+                         help=f"Cap episode length (default: {config.GATE_MAX_STEPS} when --gate-x or "
+                              "--path-freq is set, matching training; uncapped otherwise).")
     parser.add_argument("--output", default="trajectory.png")
     args = parser.parse_args(argv)
 
@@ -67,11 +70,15 @@ def main(argv=None):
                                       config.X_RANGE, config.Y_RANGE)
         finish_x = args.gate_x - args.post_gate_distance
 
+    max_steps = args.max_steps
+    if max_steps is None and finish_x is not None:
+        max_steps = config.GATE_MAX_STEPS
+
     result = simulate_hebbian_episode(
         rules, seed=args.seed, n_agents=args.n_agents, wind_enabled=args.wind_enabled,
         nx=args.wind_grid, ny=args.wind_grid, sensor_mode=args.sensor_mode,
         gradient_sensor=gradient_sensor, gates=[gate] if gate is not None else None, finish_x=finish_x,
-        record_trajectory=True)
+        max_steps=max_steps, record_trajectory=True)
     positions = result.telemetry["positions"]  # (n_steps, n_agents, 2), arena frame
 
     fig, ax = plt.subplots(figsize=(8, 8))

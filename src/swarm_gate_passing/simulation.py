@@ -33,6 +33,11 @@ _SENSOR_MODULES = {"quadrant": sensor_model_quadrant, "thymio": sensor_model_thy
 @dataclass
 class EpisodeResult:
     dist_travelled: float
+    dist_travelled_capped: float     # dist_travelled, capped at the target distance to finish_x
+                                       # (plus slack) when finish_x is set; equals dist_travelled
+                                       # otherwise -- see stage_fitness for why this, not the raw
+                                       # value, is what the distance term should reward for a task
+                                       # with an actual destination.
     average_batt: float
     collision_time: float
     wall_collision_time: float       # includes gate-barrier hits, see _move()
@@ -166,7 +171,8 @@ def _move(agents, vel, dt, n_agents, min_dist, walls, gates=None, wind_enabled=T
 def simulate_hebbian_episode(abcd_rules, seed=None, n_agents=None, wind_enabled=True,
                               max_battery=None, min_battery=None, nx=None, ny=None,
                               use_battery_sensor=True, sensor_mode="quadrant",
-                              gradient_sensor=None, gates=None, finish_x=None,
+                              gradient_sensor=None, gates=None, finish_x=None, max_steps=None,
+                              distance_cap_slack=None,
                               record_trajectory=False, record_battery=False):
     """Runs one full episode with the Hebbian ABCD controller, until any agent's
     battery depletes or (if finish_x is set) every agent has crossed finish_x.
@@ -189,7 +195,24 @@ def simulate_hebbian_episode(abcd_rules, seed=None, n_agents=None, wind_enabled=
     finish_x: optional arena-frame x; `success` is 1.0 iff every agent's x has
         crossed below this by the end of the episode (episode ends early, as
         soon as that happens, to save compute). None disables both the early
-        exit and success tracking (`success` is always 0.0).
+        exit and success tracking (`success` is always 0.0). Also determines
+        `dist_travelled_capped` (see EpisodeResult) -- when set, distance
+        credit is capped at the spawn-to-finish_x distance plus
+        distance_cap_slack, since a task with an actual destination shouldn't
+        keep rewarding a genome for cruising arbitrarily far beyond it (that
+        reward would otherwise dominate simply by running the episode out to
+        max_steps/battery-empty rather than ever attempting the destination).
+    max_steps: optional cap on step count; the episode ends (as a failure,
+        same as running out of battery) once reached. None means no cap
+        (matches original behavior). Recommended for any finish_x-bounded task
+        -- covering the target distance at a realistic speed takes far fewer
+        steps than a full battery charge lasts, so leaving this unset lets
+        "just keep going" episodes run far longer than the task needs, at
+        proportional compute cost.
+    distance_cap_slack: extra meters of travel past finish_x that still earn
+        distance credit (e.g. for the maneuvering room a swarm regrouping
+        after a gate needs) -- default config.GATE_DISTANCE_CAP_SLACK_M.
+        Unused when finish_x is None.
 
     Returns an EpisodeResult (telemetry populated only if record_trajectory/
     record_battery is set).
@@ -199,6 +222,8 @@ def simulate_hebbian_episode(abcd_rules, seed=None, n_agents=None, wind_enabled=
 
     if finish_x is None and gates:
         finish_x = gates[-1].x_arena
+    if distance_cap_slack is None:
+        distance_cap_slack = config.GATE_DISTANCE_CAP_SLACK_M
 
     sensor_module = _SENSOR_MODULES[sensor_mode]
     n_inputs = config.n_inputs_for_sensor_mode(sensor_mode)
@@ -244,7 +269,7 @@ def simulate_hebbian_episode(abcd_rules, seed=None, n_agents=None, wind_enabled=
     battery_log = [agents[:, 3].copy()] if record_battery else None
     vel = np.zeros((n_agents, 2))
 
-    while not (batteryEmpty or success):
+    while not (batteryEmpty or success or (max_steps is not None and steps >= max_steps)):
         if gradient_sensor is not None:
             world_x, world_y = _world_frame_position(agents)
             light_for_controller = gradient_sensor.read(world_x, world_y, add_noise=True)
@@ -295,6 +320,11 @@ def simulate_hebbian_episode(abcd_rules, seed=None, n_agents=None, wind_enabled=
 
     average_batt = np.mean(agents[:, 3])
     dist_travelled = -np.mean(agents[:, 0])
+    if finish_x is not None:
+        target_distance = abs(finish_x - midpoint[0]) + distance_cap_slack
+        dist_travelled_capped = min(dist_travelled, target_distance)
+    else:
+        dist_travelled_capped = dist_travelled
     collision_time = pair_collision_counter * dt
     wall_collision_time = wall_collision_counter * dt
     cohesion_dist = cohesion_dist_sum / steps if steps else 0.0
@@ -313,7 +343,8 @@ def simulate_hebbian_episode(abcd_rules, seed=None, n_agents=None, wind_enabled=
         }
 
     return EpisodeResult(
-        dist_travelled=dist_travelled, average_batt=average_batt, collision_time=collision_time,
+        dist_travelled=dist_travelled, dist_travelled_capped=dist_travelled_capped,
+        average_batt=average_batt, collision_time=collision_time,
         wall_collision_time=wall_collision_time, cohesion_dist=cohesion_dist,
         proximity_penalty=proximity_penalty, path_alignment=path_alignment,
         path_deviation_m=path_deviation_m, mean_speed=mean_speed, success=float(success),
@@ -323,7 +354,7 @@ def simulate_hebbian_episode(abcd_rules, seed=None, n_agents=None, wind_enabled=
 def stage_fitness(result: EpisodeResult, stage: str) -> float:
     """Per-stage fitness formula:
 
-    eff = distance_w*dist
+    eff = distance_w*dist_travelled_capped
           + avg_batt/battery_w
           - (wall_col_mult*wall_col_time [+ collision_time]) / collision_w
           - cohesion_dist / cohesion_w
@@ -347,7 +378,7 @@ def stage_fitness(result: EpisodeResult, stage: str) -> float:
     """
     weights = config.HEBBIAN_STAGE_FITNESS_WEIGHTS[stage]
     distance_w = weights.get("distance_w", config.HEBBIAN_EFF_DISTANCE_WEIGHT)
-    eff = distance_w * result.dist_travelled
+    eff = distance_w * result.dist_travelled_capped
 
     battery_w = weights.get("battery_w")
     if battery_w is not None:
