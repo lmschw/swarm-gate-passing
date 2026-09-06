@@ -81,6 +81,24 @@ class EvalConfig:
     gate_opening_width: float = config.GATE_OPENING_WIDTH_M
     post_gate_distance: float = config.GATE_POST_GATE_DISTANCE_M
     max_steps: Optional[int] = None
+    gate_difficulty: Optional[float] = None   # 0.0 (easy) .. 1.0 (full random) -- see
+                                                # config.GATE_CURRICULUM_STAGES/run_stage.
+                                                # None = use the stage's static bounds instead.
+
+
+_VISION_GATE_BOUNDS = {
+    "vision_gate_directed": (config.GATE_DIRECTED_X_BOUNDS, config.GATE_DIRECTED_Y_BOUNDS),
+}
+_VISION_DIRECTION_HINT = {
+    "vision_gate_directed": config.GATE_DIRECTED_DISTANCE_HINT_X,
+}
+
+
+def _lerp_bounds(easy, hard, t):
+    """Interpolates a (lo, hi) bounds pair between easy and hard at t in [0, 1]."""
+    lo = easy[0] + (hard[0] - easy[0]) * t
+    hi = easy[1] + (hard[1] - easy[1]) * t
+    return (lo, hi)
 
 
 def _make_episode_environment(cfg: EvalConfig, rng: np.random.Generator):
@@ -90,12 +108,25 @@ def _make_episode_environment(cfg: EvalConfig, rng: np.random.Generator):
     can get an independently-sampled wavelength."""
     if cfg.stage in config.VISION_STAGES:
         # No gradient map at all -- a single gate "strewn" at a random position,
-        # unrelated to any path (see environment.gate.random_gate).
+        # unrelated to any path (see environment.gate.random_gate). Placement
+        # bounds and (for "directed") a fixed general-direction reward hint are
+        # per-stage -- see config.GATE_RANDOM_*/GATE_DIRECTED_*.
         gates = None
+        finish_x = None
         if cfg.stage in config.VISION_GATE_ENABLED_STAGES:
-            gates = [random_gate(rng, cfg.gate_opening_width,
-                                  config.GATE_RANDOM_X_BOUNDS, config.GATE_RANDOM_Y_BOUNDS)]
-        return None, gates, None
+            if cfg.gate_difficulty is not None:
+                # Curriculum ramp: interpolate placement bounds by difficulty
+                # rather than using a fixed pair for the whole stage.
+                x_bounds = _lerp_bounds(config.GATE_CURRICULUM_EASY_X_BOUNDS,
+                                         config.GATE_CURRICULUM_HARD_X_BOUNDS, cfg.gate_difficulty)
+                y_bounds = _lerp_bounds(config.GATE_CURRICULUM_EASY_Y_BOUNDS,
+                                         config.GATE_CURRICULUM_HARD_Y_BOUNDS, cfg.gate_difficulty)
+            else:
+                x_bounds, y_bounds = _VISION_GATE_BOUNDS.get(
+                    cfg.stage, (config.GATE_RANDOM_X_BOUNDS, config.GATE_RANDOM_Y_BOUNDS))
+            gates = [random_gate(rng, cfg.gate_opening_width, x_bounds, y_bounds)]
+            finish_x = _VISION_DIRECTION_HINT.get(cfg.stage)
+        return None, gates, finish_x
 
     world_w = config.X_RANGE[1] - config.X_RANGE[0]
     world_h = config.Y_RANGE[1] - config.Y_RANGE[0]
@@ -197,18 +228,37 @@ def run_stage(stage, x0, plotter, popsize, maxiter, cfg_kwargs, output_dir, name
             # per episode and a stale score wouldn't be a fair, up-to-date comparison.
             for k in range(min(len(elite), len(solutions))):
                 solutions[-(k + 1)] = elite[k][1].copy()
-            cfg = EvalConfig(stage=stage, seed_base=(gen - 1) * popsize, **cfg_kwargs)
+
+            gate_difficulty = None
+            if stage in config.GATE_CURRICULUM_STAGES:
+                ramp_gens = max(1, int(maxiter * config.GATE_CURRICULUM_RAMP_FRACTION))
+                gate_difficulty = min(1.0, gen / ramp_gens)
+
+            cfg = EvalConfig(stage=stage, seed_base=(gen - 1) * popsize,
+                              gate_difficulty=gate_difficulty, **cfg_kwargs)
             futures = [pool.submit(evaluate_candidate, sol, i, cfg) for i, sol in enumerate(solutions)]
             fitness_values = [f.result() for f in futures]
             es.tell(solutions, fitness_values)
 
-            elite = sorted(elite + list(zip(fitness_values, (s.copy() for s in solutions))),
+            # Built ONLY from this generation's fresh evaluations -- NOT merged with the
+            # previous elite list. Every existing elite was just force-included and
+            # re-evaluated above, so it's already present in fitness_values/solutions;
+            # carrying the OLD elite entries forward too would let a stale, lucky score
+            # from earlier in the run (e.g. an easier point in a difficulty curriculum)
+            # outlive its own fresh re-evaluation forever, since sort-by-loss always
+            # keeps whichever of the two is numerically better regardless of which is
+            # actually still true. A real bug, caught because a curriculum run's
+            # reported best never moved past its easy-phase discovery despite 90 more
+            # generations at harder difficulty -- elite[0] must always reflect a
+            # genome's CURRENT performance, not its best-ever historical one.
+            elite = sorted(zip(fitness_values, (s.copy() for s in solutions)),
                             key=lambda t: t[0])[:config.HEBBIAN_ELITISM_COUNT]
 
             plotter.update(gen, fitness_values)
             fitness_history.append(float(min(fitness_values)))
+            difficulty_str = f" | difficulty: {gate_difficulty:.2f}" if gate_difficulty is not None else ""
             print(f"✅ Gen {gen:03d}/{maxiter} | Best Loss (neg eff): {min(fitness_values):.4f} "
-                  f"| elite best: {elite[0][0]:.4f} | {time.time() - t_gen_start:.1f}s")
+                  f"| elite best: {elite[0][0]:.4f}{difficulty_str} | {time.time() - t_gen_start:.1f}s")
 
     print(f"   (stage wall-clock: {time.time() - t_stage_start:.1f}s)")
     # Use our own elite-tracking (freshly re-evaluated every generation it survives)

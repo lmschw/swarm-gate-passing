@@ -51,8 +51,17 @@ def render_trajectory_video(result, output_path, gradient_sensor=None, gates=Non
                       alpha=0.5, aspect="auto")
         if gates:
             for gate in gates:
-                ax.plot([gate.x_arena, gate.x_arena], [y_min, gate.y_lo_arena], color="red", linewidth=3)
-                ax.plot([gate.x_arena, gate.x_arena], [gate.y_hi_arena, y_max], color="red", linewidth=3)
+                if gate.blocking:
+                    # solid wall spans the rest of the arena's y-range -- a real barrier
+                    ax.plot([gate.x_arena, gate.x_arena], [y_min, gate.y_lo_arena], color="red", linewidth=3)
+                    ax.plot([gate.x_arena, gate.x_arena], [gate.y_hi_arena, y_max], color="red", linewidth=3)
+                else:
+                    # "just a pole on either side" -- two short landmark posts, NOT a wall;
+                    # nothing stops an agent from crossing anywhere else along this x.
+                    post_half_len = 0.15
+                    for post_y in (gate.y_lo_arena, gate.y_hi_arena):
+                        ax.plot([gate.x_arena, gate.x_arena], [post_y - post_half_len, post_y + post_half_len],
+                                color="red", linewidth=5, solid_capstyle="round")
         if finish_x is not None:
             ax.axvline(finish_x, color="orange", linestyle="--", linewidth=1.5)
 

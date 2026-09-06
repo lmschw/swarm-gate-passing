@@ -257,9 +257,32 @@ GATE_SPEED_WEIGHT = 0.05            # eff += mean_speed_mps / this (mean_speed ~
 # (~2) in the same range as the other smooth terms, not dominant but a real, direct cost.
 GATE_STOP_SPEED_THRESHOLD_MPS = 0.02
 GATE_STOPPED_TIME_WEIGHT = 100.0
-GATE_SUCCESS_BONUS = 30.0           # eff += this iff EVERY agent crossed the finish line -- roughly an
-                                     # order of magnitude above the smooth terms' typical spread, so success
-                                     # is unambiguously better than any amount of near-miss behavior
+# Non-blocking ("pole") gates let agents cross freely in either direction, and
+# crossing_success is direction-agnostic and sticky (first crossing only) -- so
+# nothing inherently discourages an agent that's already crossed from wandering
+# back and forth through the opening while waiting for the rest of the swarm
+# (observed directly in a trained genome's video: agents visibly hovering/
+# oscillating through the gap rather than settling once through). Each crossing
+# beyond an agent's necessary first one (simulation.EpisodeResult.
+# excess_crossings) is penalized directly. weight=2.0 was confirmed too weak in
+# practice: a genome with 35 excess crossings still scored well (35/2=17.5 points
+# against the 30-point success bonus, net positive) and the hovering was visibly
+# unchanged after retraining. At weight=1.0, that same 35 crossings costs 35
+# points -- MORE than the entire success bonus, so oscillating heavily on the way
+# to success is a net loss versus a clean pass (or even versus not succeeding at
+# all), while a handful of genuinely necessary re-crossings (2-3) still only
+# costs 2-3 points, comparable to the other smooth terms.
+GATE_EXCESS_CROSSING_WEIGHT = 1.0
+GATE_SUCCESS_BONUS = 100.0          # eff += this iff EVERY agent crossed the finish line. Was 30.0 --
+                                     # confirmed too weak over a longer (300-gen) run: fitness is the
+                                     # MEDIAN of 3 repeats, so a genome needs a roughly 2-out-of-3 (67%+)
+                                     # per-episode success rate before that success reliably shows up in
+                                     # what CMA-ES actually selects on -- our best genomes only reach
+                                     # ~25-30%, so most evaluations never see the bonus at all, and the
+                                     # dense, always-present smooth-term penalty gradient gradually won
+                                     # out over enough generations (0/15 successes after 300 gens vs
+                                     # 4/15 at 100). A much larger bonus (100, not 30) is meant to tilt
+                                     # that balance more decisively even while it stays sparse.
 
 # The finish line ("success") sits this far past the LAST gate, not at it -- a gate can
 # physically scatter the swarm as individuals squeeze through separately, so requiring
@@ -300,6 +323,43 @@ VISION_RANGE = 2.0                # meters; matches the earlier "quadrant" mode'
 GATE_RANDOM_X_BOUNDS = (-3.0, 3.0)  # gate x placement bounds, kept off the hard arena edges
 GATE_RANDOM_Y_BOUNDS = (-3.0, 3.0)  # gate y-center placement bounds, same margin
 
+# "vision_gate_directed" variant: fully-random gate placement (any x, any y) proved a
+# hard exploration problem with only a limited-range occlusion-aware sensor and no
+# directional cue at all (3-6/15 successes across the plain "vision_gate" runs). This
+# keeps the vision requirement (the gate's exact y within the band, and its precise x,
+# still have to be found by sight) but narrows x to a small band roughly one consistent
+# distance/direction from spawn ("a little left and right") while y stays free-ranging
+# ("up and down") -- and adds a MODEST reward for capped progress in that general
+# direction (a hint, not a map: GATE_DIRECTED_DISTANCE_HINT_X is a fixed representative
+# x, not the actual per-episode gate position, which still varies within the band).
+GATE_DIRECTED_X_BOUNDS = (-3.5, -2.5)
+GATE_DIRECTED_Y_BOUNDS = (-3.0, 3.0)
+GATE_DIRECTED_DISTANCE_HINT_X = -3.0
+GATE_DIRECTED_DISTANCE_WEIGHT = 0.5   # eff += dist_travelled_capped / this; capped at
+                                       # abs(hint_x)+slack=4.0m, so max contribution ~8 --
+                                       # enough to meaningfully bias early exploration
+                                       # toward the right general direction without
+                                       # approaching the 30-point success bonus's scale.
+
+# "vision_gate_curriculum" variant: neither the fully-random placement (3-6/15 successes,
+# then 1/15 once the crossing penalty was strengthened) nor a fixed easier direction+hint
+# (0/15 -- cleanest movement of any variant, but never needed to solve the actual
+# find-the-precise-opening problem, so it never learned to) produced a swarm that
+# reliably finds and threads the gate. Difficulty here ramps WITHIN a single training
+# run (see optimize.run_stage's per-generation gate_difficulty, config.
+# GATE_CURRICULUM_RAMP_FRACTION) rather than being fixed for the whole stage: the gate
+# starts essentially guaranteed-visible from spawn (close, centered) and widens smoothly
+# toward the full random range, so the swarm has to have already learned to recognize
+# and steer by the gate's visual landmark before finding it becomes genuinely hard --
+# rather than needing to discover that skill from scratch under maximum difficulty.
+GATE_CURRICULUM_EASY_X_BOUNDS = (-1.2, -0.9)   # just past the ~1.5m spawn-square edge
+GATE_CURRICULUM_EASY_Y_BOUNDS = (-0.3, 0.3)    # narrow, centered -- minimal search needed
+GATE_CURRICULUM_HARD_X_BOUNDS = GATE_RANDOM_X_BOUNDS
+GATE_CURRICULUM_HARD_Y_BOUNDS = GATE_RANDOM_Y_BOUNDS
+GATE_CURRICULUM_RAMP_FRACTION = 0.7   # difficulty reaches 1.0 (full random bounds) at this
+                                       # fraction of the stage's generations, then holds
+                                       # there for the remainder to consolidate/refine
+
 # --- Staged curricula ---
 # Two independent curricula: the original energy-efficiency one (Table 2's 3
 # stages, plus the fixed-map gradient-following stage added when this project
@@ -330,8 +390,9 @@ GATE_RANDOM_Y_BOUNDS = (-3.0, 3.0)  # gate y-center placement bounds, same margi
 ENERGY_STAGES = ("walk_left", "save_battery_avoid_wall", "save_battery_avoid_all", "follow_gradient_path")
 GATE_STAGES = ("flock_cohesion", "flock_gradient", "flock_gate", "flock_gate_speed")
 GATE_ENABLED_STAGES = ("flock_gate", "flock_gate_speed")
-VISION_STAGES = ("vision_flock", "vision_gate")
-VISION_GATE_ENABLED_STAGES = ("vision_gate",)
+VISION_STAGES = ("vision_flock", "vision_gate", "vision_gate_directed", "vision_gate_curriculum")
+VISION_GATE_ENABLED_STAGES = ("vision_gate", "vision_gate_directed", "vision_gate_curriculum")
+GATE_CURRICULUM_STAGES = ("vision_gate_curriculum",)
 HEBBIAN_STAGES = ENERGY_STAGES + GATE_STAGES + VISION_STAGES
 HEBBIAN_STAGE_WIND_ENABLED = {
     "walk_left": False,
@@ -344,6 +405,8 @@ HEBBIAN_STAGE_WIND_ENABLED = {
     "flock_gate_speed": GATE_WIND_ENABLED,
     "vision_flock": GATE_WIND_ENABLED,
     "vision_gate": GATE_WIND_ENABLED,
+    "vision_gate_directed": GATE_WIND_ENABLED,
+    "vision_gate_curriculum": GATE_WIND_ENABLED,
 }
 # Per-stage fitness weights, all optional (a missing/None key means that term is
 # entirely absent, and distance_w explicitly set to 0.0 means "off" too, since it's
@@ -423,6 +486,33 @@ HEBBIAN_STAGE_FITNESS_WEIGHTS = {
         "speed_w": GATE_SPEED_WEIGHT,
         "stopped_w": GATE_STOPPED_TIME_WEIGHT,
         "success_bonus": GATE_SUCCESS_BONUS,
+        "excess_crossings_w": GATE_EXCESS_CROSSING_WEIGHT,
+    },
+    # Same as "vision_gate" but with a modest distance_w (see GATE_DIRECTED_* above) --
+    # the gate placement is also narrowed to a consistent general direction (handled in
+    # optimize.py's per-stage gate-placement bounds, not here).
+    "vision_gate_directed": {
+        "distance_w": GATE_DIRECTED_DISTANCE_WEIGHT,
+        "collision_w": GATE_COLLISION_WEIGHT, "wall_col_mult": GATE_WALL_COL_MULT,
+        "include_inter_robot_collision": True,
+        "cohesion_w": GATE_COHESION_WEIGHT,
+        "speed_w": GATE_SPEED_WEIGHT,
+        "stopped_w": GATE_STOPPED_TIME_WEIGHT,
+        "success_bonus": GATE_SUCCESS_BONUS,
+        "excess_crossings_w": GATE_EXCESS_CROSSING_WEIGHT,
+    },
+    # Same fitness composition as "vision_gate" -- the difference is entirely in gate
+    # PLACEMENT (a per-generation difficulty ramp, see optimize.run_stage and
+    # config.GATE_CURRICULUM_*), not in what's rewarded.
+    "vision_gate_curriculum": {
+        "distance_w": 0.0,
+        "collision_w": GATE_COLLISION_WEIGHT, "wall_col_mult": GATE_WALL_COL_MULT,
+        "include_inter_robot_collision": True,
+        "cohesion_w": GATE_COHESION_WEIGHT,
+        "speed_w": GATE_SPEED_WEIGHT,
+        "stopped_w": GATE_STOPPED_TIME_WEIGHT,
+        "success_bonus": GATE_SUCCESS_BONUS,
+        "excess_crossings_w": GATE_EXCESS_CROSSING_WEIGHT,
     },
 }
 

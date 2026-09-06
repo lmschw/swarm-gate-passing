@@ -1,0 +1,22 @@
+
+=== vision_gate ===
+  seed 123: 7/15 successes (47%), avg_cohesion=1.09m, avg_excess_crossings=13.1
+  seed 42: 6/15 successes (40%), avg_cohesion=1.13m, avg_excess_crossings=17.8
+  seed 777: 6/15 successes (40%), avg_cohesion=1.42m, avg_excess_crossings=19.7
+  --- vision_gate summary (n=3 seeds) ---
+  success_rate: mean=42.2%  std=3.1%  min=40%  max=47%
+  cohesion:     mean=1.21m  std=0.15m
+  excess_cross: mean=16.9  std=2.8
+
+=== vision_gate_curriculum ===
+  seed 123: 9/15 successes (60%), avg_cohesion=1.06m, avg_excess_crossings=13.7
+  seed 42: 0/15 successes (0%), avg_cohesion=1.59m, avg_excess_crossings=3.7
+  seed 777: 6/15 successes (40%), avg_cohesion=1.50m, avg_excess_crossings=21.3
+  --- vision_gate_curriculum summary (n=3 seeds) ---
+  success_rate: mean=33.3%  std=24.9%  min=0%  max=60%
+  cohesion:     mean=1.38m  std=0.23m
+  excess_cross: mean=12.9  std=7.2
+
+=== FINAL COMPARISON ===
+vision_gate                 : mean success rate =  42.2%  (seeds: ['47%', '40%', '40%'])
+vision_gate_curriculum      : mean success rate =  33.3%  (seeds: ['60%', '0%', '40%'])

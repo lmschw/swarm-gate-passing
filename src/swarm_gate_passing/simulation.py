@@ -55,6 +55,10 @@ class EpisodeResult:
                                        # (same accumulation convention as collision_time)
     success: float                   # 1.0 iff every agent had crossed finish_x by episode end
     post_gate_cohesion_dist: Optional[float] = None  # mean pairwise distance, steps-past-last-gate only
+    excess_crossings: float = 0.0    # sum over (gate, agent) of max(0, times_crossed_gate - 1) -- only
+                                       # meaningful when crossing_success=True; penalizes going back
+                                       # and forth through any gate beyond each agent's necessary first
+                                       # crossing of it (which is free -- see stage_fitness)
     telemetry: Optional[dict] = None
 
 
@@ -283,6 +287,7 @@ def simulate_hebbian_episode(abcd_rules, seed=None, n_agents=None, wind_enabled=
     post_gate_steps = 0
     last_gate_x = gates[-1].x_arena if gates else None
     crossed_ever = np.zeros(n_agents, dtype=bool) if crossing_success else None
+    crossing_count = np.zeros(n_agents, dtype=int) if crossing_success else None
     batteryEmpty = False
     success = False
     positions_log = [agents[:, 0:2].copy()] if record_trajectory else None
@@ -332,6 +337,7 @@ def simulate_hebbian_episode(abcd_rules, seed=None, n_agents=None, wind_enabled=
             within_opening = np.array([gate0.within_opening(yy) for yy in agents[:, 1]])
             crossed_this_step = crossed_x & within_opening
             crossed_ever |= crossed_this_step
+            crossing_count += crossed_this_step.astype(int)
         if last_gate_x is not None and np.all(agents[:, 0] < last_gate_x):
             post_gate_cohesion_sum += mean_pairwise_dist
             post_gate_steps += 1
@@ -370,6 +376,7 @@ def simulate_hebbian_episode(abcd_rules, seed=None, n_agents=None, wind_enabled=
     stopped_time = stopped_steps_counter * dt
     proximity_penalty = 0.0  # tracked but unweighted by default; see _proximity_penalty
     post_gate_cohesion_dist = (post_gate_cohesion_sum / post_gate_steps) if post_gate_steps else None
+    excess_crossings = float(np.sum(np.maximum(crossing_count - 1, 0))) if crossing_success else 0.0
 
     telemetry = None
     if record_trajectory or record_battery:
@@ -385,7 +392,8 @@ def simulate_hebbian_episode(abcd_rules, seed=None, n_agents=None, wind_enabled=
         wall_collision_time=wall_collision_time, cohesion_dist=cohesion_dist,
         proximity_penalty=proximity_penalty, path_alignment=path_alignment,
         path_deviation_m=path_deviation_m, mean_speed=mean_speed, stopped_time=stopped_time,
-        success=float(success), post_gate_cohesion_dist=post_gate_cohesion_dist, telemetry=telemetry)
+        success=float(success), post_gate_cohesion_dist=post_gate_cohesion_dist,
+        excess_crossings=excess_crossings, telemetry=telemetry)
 
 
 def stage_fitness(result: EpisodeResult, stage: str) -> float:
@@ -400,6 +408,7 @@ def stage_fitness(result: EpisodeResult, stage: str) -> float:
           + path_alignment / path_w
           + mean_speed / speed_w
           - stopped_time / stopped_w
+          - excess_crossings / excess_crossings_w
           - post_gate_cohesion_dist / post_gate_cohesion_w [if the swarm ever got past the last gate]
           + success_bonus [if success]
 
@@ -457,6 +466,10 @@ def stage_fitness(result: EpisodeResult, stage: str) -> float:
     stopped_w = weights.get("stopped_w")
     if stopped_w is not None:
         eff -= result.stopped_time / stopped_w
+
+    excess_crossings_w = weights.get("excess_crossings_w")
+    if excess_crossings_w is not None:
+        eff -= result.excess_crossings / excess_crossings_w
 
     success_bonus = weights.get("success_bonus")
     if success_bonus is not None and result.success:
