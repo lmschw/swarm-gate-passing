@@ -1,0 +1,7 @@
+🚀 stages=['vision_gate'], sensor_mode=vision, popsize=30, maxiter=100, n_agents=10, n_repeats=3, workers=15
+↳ Seeding 'vision_gate' from existing genome 'hebbian_results_multiseed/vision_gate/seed_123/hebbian_vision_gate_vision_best.npy' (instead of a fresh random one).
+
+======================================================================
+🧬 STAGE: vision_gate  ({'sensor_mode': 'vision', 'n_agents': 10, 'n_repeats': 3, 'max_battery': None, 'min_battery': None, 'nx': None, 'ny': None, 'use_battery_sensor': True, 'wind_enabled': False, 'gradient_map_path': None, 'freq_choices': (), 'gate_enabled': False, 'n_gates': 2, 'finish_x_choices': (), 'gate_opening_width': 1.0, 'post_gate_distance': 1.5, 'max_steps': 400})
+======================================================================
+(15_w,30)-aCMA-ES (mu_w=8.6,w_1=20%) in dimension 960 (seed=43, Sun Sep  6 22:03:44 2026)

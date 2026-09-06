@@ -63,6 +63,17 @@ def test_vision_gate_undirected_uses_full_bounds_and_no_hint():
     assert config.GATE_RANDOM_X_BOUNDS[0] <= gates[0].x_arena <= config.GATE_RANDOM_X_BOUNDS[1]
 
 
+def test_vision_gate_n_gates_places_that_many_independently_random_gates():
+    cfg = _tiny_cfg(stage="vision_gate", sensor_mode="vision", n_gates=2)
+    rng = np.random.default_rng(0)
+    _, gates, _ = _make_episode_environment(cfg, rng)
+    assert len(gates) == 2
+    for gate in gates:
+        assert config.GATE_RANDOM_X_BOUNDS[0] <= gate.x_arena <= config.GATE_RANDOM_X_BOUNDS[1]
+    # independently sampled -- vanishingly unlikely to land on the exact same spot
+    assert (gates[0].x_arena, gates[0].y_lo_arena) != (gates[1].x_arena, gates[1].y_lo_arena)
+
+
 def test_lerp_bounds_at_endpoints_and_midpoint():
     easy, hard = (-1.2, -0.9), (-3.0, 3.0)
     assert _lerp_bounds(easy, hard, 0.0) == pytest.approx(easy)

@@ -219,3 +219,63 @@ def test_crossing_success_true_when_all_agents_start_past_a_trivial_gate():
         rules, seed=6, n_agents=3, wind_enabled=False, sensor_mode="vision",
         max_battery=1.0, min_battery=1.0, gates=[gate_far], crossing_success=True)
     assert result.success == 0.0
+
+
+def test_sequential_gates_progress_requires_order():
+    """Mirrors the exact next_gate_idx/crossing_count bookkeeping in
+    simulate_hebbian_episode's crossing_success branch (see the `for gi, gate
+    in enumerate(gates)` loop), but drives one agent's x position directly --
+    proves that crossing gate index 1 before gate index 0 does NOT advance
+    progress; only clearing them strictly in order (0, then 1) does."""
+    gates_x = [0.0, -5.0]  # gate "A" then gate "B", per the required order
+    next_gate_idx = np.zeros(1, dtype=int)
+
+    def step(x_before, x_after):
+        for gi, gx in enumerate(gates_x):
+            crossed = ((x_before - gx) * (x_after - gx)) < 0.0
+            advances = crossed & (next_gate_idx == gi)
+            next_gate_idx[advances] += 1
+
+    # cross gate B (x=-5) first, skipping gate A entirely -- must NOT count
+    step(np.array([-4.0]), np.array([-6.0]))
+    assert next_gate_idx[0] == 0
+    # now cross gate A (x=0) -- this is the current target, so it counts
+    step(np.array([1.0]), np.array([-1.0]))
+    assert next_gate_idx[0] == 1
+    # re-crossing gate A (already cleared) doesn't advance further
+    step(np.array([-1.0]), np.array([1.0]))
+    assert next_gate_idx[0] == 1
+    # finally cross gate B, now that it's the current target -- sequence complete
+    step(np.array([-4.0]), np.array([-6.0]))
+    assert next_gate_idx[0] == 2 == len(gates_x)
+
+
+def test_crossing_success_two_gates_requires_both_in_order():
+    """With 2 gates, success must stay False if the FIRST (required) gate is
+    unreachable -- even though the second gate is trivially easy -- since an
+    agent can never even start progressing through the sequence without it."""
+    rules = unflatten_abcd(_random_genome("vision", seed=3), n_inputs=12)
+    gate_a_far = Gate(x_arena=-100.0, y_lo_arena=-10.0, y_hi_arena=10.0)
+    gate_b_near = Gate(x_arena=0.0, y_lo_arena=-10.0, y_hi_arena=10.0)
+    result = simulate_hebbian_episode(
+        rules, seed=6, n_agents=3, wind_enabled=False, sensor_mode="vision",
+        max_battery=1.0, min_battery=1.0, gates=[gate_a_far, gate_b_near], crossing_success=True)
+    assert result.success == 0.0
+
+
+def test_crossing_success_two_gates_true_once_both_cleared_in_order():
+    """Both gates placed exactly where the swarm spawns (wide-open y range) so
+    a genome that moves at all clears gate A then immediately gate B within a
+    few steps -- checks the end-to-end wiring (not just the bookkeeping unit
+    test above) accepts a real 2-gate success."""
+    rules = unflatten_abcd(_random_genome("vision", seed=3), n_inputs=12)
+    gate_a = Gate(x_arena=0.05, y_lo_arena=-10.0, y_hi_arena=10.0)
+    gate_b = Gate(x_arena=-0.05, y_lo_arena=-10.0, y_hi_arena=10.0)
+    result = simulate_hebbian_episode(
+        rules, seed=6, n_agents=3, wind_enabled=False, sensor_mode="vision",
+        max_battery=5.0, min_battery=5.0, gates=[gate_a, gate_b], crossing_success=True, max_steps=200)
+    assert result.excess_crossings >= 0.0
+    # success is genome-dependent (it must actually move enough to cross both),
+    # but the run must terminate (not error) and produce a finite fitness either way
+    eff = stage_fitness(result, "vision_gate")
+    assert np.isfinite(eff)

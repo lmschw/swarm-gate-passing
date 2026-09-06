@@ -225,15 +225,19 @@ def simulate_hebbian_episode(abcd_rules, seed=None, n_agents=None, wind_enabled=
         after a gate needs) -- default config.GATE_DISTANCE_CAP_SLACK_M.
         Unused when finish_x is None.
     crossing_success: if True, IGNORES finish_x's positional success check and
-        instead uses gates[0] as a crossing EVENT: each agent that has ever
-        crossed gates[0]'s x (in EITHER direction -- direction doesn't matter,
-        and only the FIRST crossing counts, so going back and forth earns
-        nothing further) is marked permanently done; `success` is 1.0 once
-        every agent has done so. For the "gates strewn in the environment, no
+        instead treats `gates` as an ORDERED sequence of crossing EVENTS: each
+        agent must cross gates[0]'s x (in EITHER direction -- direction doesn't
+        matter) within its opening, then gates[1]'s, and so on in order --
+        crossing a gate out of order (before its predecessor) doesn't advance
+        that agent's progress. Only each gate's first crossing (once it's the
+        agent's current target) counts; going back and forth earns nothing
+        further. `success` is 1.0 once every agent has cleared every gate in
+        order. With a single gate this reduces exactly to "everyone has
+        crossed it once". For the "gates strewn in the environment, no
         gradient map" curriculum (see config.VISION_STAGES/sensor_model_vision.py)
         where there's no single well-defined "finish line" position to check
-        against, only a gate the swarm must find and pass through together.
-        Requires gates to be non-empty; uses only gates[0] (single-gate for now).
+        against, only gate(s) the swarm must find and pass through together.
+        Requires gates to be non-empty.
 
     Returns an EpisodeResult (telemetry populated only if record_trajectory/
     record_battery is set).
@@ -286,8 +290,9 @@ def simulate_hebbian_episode(abcd_rules, seed=None, n_agents=None, wind_enabled=
     post_gate_cohesion_sum = 0.0
     post_gate_steps = 0
     last_gate_x = gates[-1].x_arena if gates else None
-    crossed_ever = np.zeros(n_agents, dtype=bool) if crossing_success else None
-    crossing_count = np.zeros(n_agents, dtype=int) if crossing_success else None
+    n_seq_gates = len(gates) if crossing_success else 0
+    next_gate_idx = np.zeros(n_agents, dtype=int) if crossing_success else None
+    crossing_count = np.zeros((n_seq_gates, n_agents), dtype=int) if crossing_success else None
     batteryEmpty = False
     success = False
     positions_log = [agents[:, 0:2].copy()] if record_trajectory else None
@@ -327,17 +332,22 @@ def simulate_hebbian_episode(abcd_rules, seed=None, n_agents=None, wind_enabled=
         stopped_steps_counter += int(np.sum(vel_actual[:, 0] < config.GATE_STOP_SPEED_THRESHOLD_MPS))
         steps += 1
         if crossing_success:
-            gate0 = gates[0]
-            crossed_x = ((x_before_move - gate0.x_arena) * (agents[:, 0] - gate0.x_arena)) < 0.0
-            # For a non-blocking gate ("just a pole on either side"), agents can cross
-            # gate0.x_arena anywhere -- only a crossing that also lands within the
-            # opening counts as "through the gate". For a blocking gate this check is
-            # redundant (any crossing that got this far was already forced into the
-            # opening by _move()) but harmless, so it's applied unconditionally.
-            within_opening = np.array([gate0.within_opening(yy) for yy in agents[:, 1]])
-            crossed_this_step = crossed_x & within_opening
-            crossed_ever |= crossed_this_step
-            crossing_count += crossed_this_step.astype(int)
+            for gi, gate in enumerate(gates):
+                crossed_x = ((x_before_move - gate.x_arena) * (agents[:, 0] - gate.x_arena)) < 0.0
+                # For a non-blocking gate ("just a pole on either side"), agents can cross
+                # gate.x_arena anywhere -- only a crossing that also lands within the
+                # opening counts as "through the gate". For a blocking gate this check is
+                # redundant (any crossing that got this far was already forced into the
+                # opening by _move()) but harmless, so it's applied unconditionally.
+                within_opening = np.array([gate.within_opening(yy) for yy in agents[:, 1]])
+                crossed_this_step = crossed_x & within_opening
+                crossing_count[gi] += crossed_this_step.astype(int)
+                # Only advances an agent's progress if this gate is the one it's
+                # currently waiting on -- crossing a later gate first (or an
+                # already-cleared earlier one again) still counts toward
+                # excess_crossings above, but doesn't skip the sequence.
+                advances = crossed_this_step & (next_gate_idx == gi)
+                next_gate_idx[advances] += 1
         if last_gate_x is not None and np.all(agents[:, 0] < last_gate_x):
             post_gate_cohesion_sum += mean_pairwise_dist
             post_gate_steps += 1
@@ -356,7 +366,7 @@ def simulate_hebbian_episode(abcd_rules, seed=None, n_agents=None, wind_enabled=
 
         batteryEmpty = np.any(agents[:, 3] <= 0.0)
         if crossing_success:
-            success = bool(np.all(crossed_ever))
+            success = bool(np.all(next_gate_idx >= n_seq_gates))
         elif finish_x is not None:
             success = bool(np.all(agents[:, 0] < finish_x))
 

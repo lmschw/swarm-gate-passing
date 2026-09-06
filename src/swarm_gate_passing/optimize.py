@@ -107,10 +107,13 @@ def _make_episode_environment(cfg: EvalConfig, rng: np.random.Generator):
     (cheap -- a few ms at this resolution) rather than cached, so each repeat
     can get an independently-sampled wavelength."""
     if cfg.stage in config.VISION_STAGES:
-        # No gradient map at all -- a single gate "strewn" at a random position,
-        # unrelated to any path (see environment.gate.random_gate). Placement
-        # bounds and (for "directed") a fixed general-direction reward hint are
-        # per-stage -- see config.GATE_RANDOM_*/GATE_DIRECTED_*.
+        # No gradient map at all -- cfg.n_gates gate(s) "strewn" at random,
+        # independent positions, unrelated to any path (see
+        # environment.gate.random_gate). Placement bounds and (for "directed")
+        # a fixed general-direction reward hint are per-stage -- see
+        # config.GATE_RANDOM_*/GATE_DIRECTED_*. With n_gates > 1, gates must be
+        # cleared IN ORDER (gates[0] first, then gates[1], ...) for success --
+        # see simulate_hebbian_episode's crossing_success.
         gates = None
         finish_x = None
         if cfg.stage in config.VISION_GATE_ENABLED_STAGES:
@@ -124,7 +127,8 @@ def _make_episode_environment(cfg: EvalConfig, rng: np.random.Generator):
             else:
                 x_bounds, y_bounds = _VISION_GATE_BOUNDS.get(
                     cfg.stage, (config.GATE_RANDOM_X_BOUNDS, config.GATE_RANDOM_Y_BOUNDS))
-            gates = [random_gate(rng, cfg.gate_opening_width, x_bounds, y_bounds)]
+            n_gates = max(1, cfg.n_gates)
+            gates = [random_gate(rng, cfg.gate_opening_width, x_bounds, y_bounds) for _ in range(n_gates)]
             finish_x = _VISION_DIRECTION_HINT.get(cfg.stage)
         return None, gates, finish_x
 
