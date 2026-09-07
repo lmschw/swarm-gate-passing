@@ -1,0 +1,11 @@
+🚀 stages=['vision_gate'], sensor_mode=vision, popsize=60, maxiter=100, n_agents=10, n_repeats=3, workers=15
+↳ Seeding 'vision_gate' from existing genome 'hebbian_results_multiseed/vision_gate/seed_123/hebbian_vision_gate_vision_best.npy' (instead of a fresh random one).
+
+======================================================================
+🧬 STAGE: vision_gate  ({'sensor_mode': 'vision', 'n_agents': 10, 'n_repeats': 3, 'max_battery': 1000000.0, 'min_battery': 1000000.0, 'nx': None, 'ny': None, 'use_battery_sensor': True, 'wind_enabled': False, 'gradient_map_path': None, 'freq_choices': (), 'gate_enabled': False, 'n_gates': 2, 'finish_x_choices': (), 'gate_opening_width': 1.0, 'post_gate_distance': 1.5, 'max_steps': 4000})
+======================================================================
+(30_w,60)-aCMA-ES (mu_w=16.6,w_1=12%) in dimension 960 (seed=43, Mon Sep  7 22:05:09 2026)
+✅ Gen 001/100 | Best Loss (neg eff): -1.8303 | elite best: -1.8303 | 234.5s
+✅ Gen 002/100 | Best Loss (neg eff): -2.0042 | elite best: -2.0042 | 254.4s
+✅ Gen 003/100 | Best Loss (neg eff): -1.9203 | elite best: -1.9203 | 260.5s
+✅ Gen 004/100 | Best Loss (neg eff): -2.0628 | elite best: -2.0628 | 255.8s

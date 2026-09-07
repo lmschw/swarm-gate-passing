@@ -287,7 +287,7 @@ def run_stage(stage, x0, plotter, popsize, maxiter, cfg_kwargs, output_dir, name
 def train_one_seed(seed, output_dir, stages, popsize, maxiter, n_agents, n_repeats,
                     battery, wind_grid, no_battery_sensor, gradient_map, sensor_mode,
                     freq_choices, gate_x_choices, gate_opening_width, n_gates, post_gate_distance,
-                    n_workers, init_genome_path=None):
+                    n_workers, init_genome_path=None, max_steps_override=None):
     os.makedirs(output_dir, exist_ok=True)
     np.random.seed(seed)
     if any(s in config.VISION_STAGES for s in stages) and sensor_mode != "vision":
@@ -324,7 +324,8 @@ def train_one_seed(seed, output_dir, stages, popsize, maxiter, n_agents, n_repea
             freq_choices=this_freq_choices, gate_enabled=gate_enabled, n_gates=n_gates,
             finish_x_choices=this_gate_x_choices, gate_opening_width=gate_opening_width,
             post_gate_distance=post_gate_distance,
-            max_steps=config.GATE_MAX_STEPS if (is_gate_task_stage or is_vision_task_stage) else None,
+            max_steps=(max_steps_override if max_steps_override is not None
+                       else (config.GATE_MAX_STEPS if (is_gate_task_stage or is_vision_task_stage) else None)),
         )
         genome = run_stage(stage, genome, plotter, popsize, maxiter, cfg_kwargs, output_dir,
                             name_suffix, n_workers, cma_seed=seed + stage_idx + 1)
@@ -377,6 +378,12 @@ def build_arg_parser():
     parser.add_argument("--workers", type=int, default=None,
                          help="Process-pool size for parallel candidate evaluation "
                               "(default: min(popsize, cpu_count)).")
+    parser.add_argument("--max-steps", type=int, default=None,
+                         help="Override the per-episode step cap for gate/vision stages (default: "
+                              f"config.GATE_MAX_STEPS={config.GATE_MAX_STEPS}). Useful for harder tasks "
+                              "(e.g. multiple sequential gates) that need more time to physically reach "
+                              "every gate -- note battery capacity (--battery) may also need raising, "
+                              "since agents stop early once their battery empties regardless of this cap.")
     return parser
 
 
@@ -389,7 +396,8 @@ def main(argv=None):
                         args.n_repeats, args.battery, args.wind_grid, args.no_battery_sensor,
                         args.gradient_map, args.sensor_mode, args.path_freq_choices,
                         args.gate_x_choices, args.gate_opening_width, args.n_gates,
-                        args.post_gate_distance, n_workers, init_genome_path=args.init_genome)
+                        args.post_gate_distance, n_workers, init_genome_path=args.init_genome,
+                        max_steps_override=args.max_steps)
 
     if args.seeds is not None:
         seeds = args.seeds if len(args.seeds) > 0 else list(config.HEBBIAN_BATCH_SEEDS)
