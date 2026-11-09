@@ -1,0 +1,339 @@
+🚀 3-seed sweep: seeds=[42, 123, 777], stages=['vision_gate_curriculum_partial'], sensor_mode=vision, popsize=30, maxiter=100, n_agents=10, n_repeats=3, workers=15
+
+######################################################################
+### SEED 42 (1/3) -> hebbian_results_2gate/vision_gate_curriculum_partial/seed_42/
+######################################################################
+↳ Seeding 'vision_gate_curriculum_partial' from existing genome 'hebbian_results_vision_v3/n10/hebbian_vision_flock_vision_best.npy' (instead of a fresh random one).
+
+======================================================================
+🧬 STAGE: vision_gate_curriculum_partial  ({'sensor_mode': 'vision', 'n_agents': 10, 'n_repeats': 3, 'max_battery': None, 'min_battery': None, 'nx': None, 'ny': None, 'use_battery_sensor': True, 'wind_enabled': False, 'gradient_map_path': None, 'freq_choices': (), 'gate_enabled': False, 'n_gates': 2, 'finish_x_choices': (), 'gate_opening_width': 1.0, 'post_gate_distance': 1.5, 'max_steps': 400})
+======================================================================
+(15_w,30)-aCMA-ES (mu_w=8.6,w_1=20%) in dimension 960 (seed=43, Wed Sep  9 16:49:07 2026)
+✅ Gen 001/100 | Best Loss (neg eff): -0.6978 | elite best: -0.6978 | difficulty: 0.01 | 10.9s
+✅ Gen 002/100 | Best Loss (neg eff): 3.8837 | elite best: 3.8837 | difficulty: 0.03 | 10.7s
+✅ Gen 003/100 | Best Loss (neg eff): 7.9255 | elite best: 7.9255 | difficulty: 0.04 | 10.3s
+✅ Gen 004/100 | Best Loss (neg eff): 9.2102 | elite best: 9.2102 | difficulty: 0.06 | 10.1s
+✅ Gen 005/100 | Best Loss (neg eff): 3.2101 | elite best: 3.2101 | difficulty: 0.07 | 20.9s
+✅ Gen 006/100 | Best Loss (neg eff): 4.8310 | elite best: 4.8310 | difficulty: 0.09 | 14.8s
+✅ Gen 007/100 | Best Loss (neg eff): 4.7848 | elite best: 4.7848 | difficulty: 0.10 | 12.3s
+✅ Gen 008/100 | Best Loss (neg eff): 7.6560 | elite best: 7.6560 | difficulty: 0.11 | 12.4s
+✅ Gen 009/100 | Best Loss (neg eff): 6.6707 | elite best: 6.6707 | difficulty: 0.13 | 12.5s
+✅ Gen 010/100 | Best Loss (neg eff): 2.7846 | elite best: 2.7846 | difficulty: 0.14 | 12.3s
+✅ Gen 011/100 | Best Loss (neg eff): 7.1775 | elite best: 7.1775 | difficulty: 0.16 | 12.2s
+✅ Gen 012/100 | Best Loss (neg eff): 1.8488 | elite best: 1.8488 | difficulty: 0.17 | 12.3s
+✅ Gen 013/100 | Best Loss (neg eff): 3.6298 | elite best: 3.6298 | difficulty: 0.19 | 12.3s
+✅ Gen 014/100 | Best Loss (neg eff): 5.6633 | elite best: 5.6633 | difficulty: 0.20 | 12.6s
+✅ Gen 015/100 | Best Loss (neg eff): 3.4877 | elite best: 3.4877 | difficulty: 0.21 | 14.3s
+✅ Gen 016/100 | Best Loss (neg eff): 0.5367 | elite best: 0.5367 | difficulty: 0.23 | 13.2s
+✅ Gen 017/100 | Best Loss (neg eff): 3.6528 | elite best: 3.6528 | difficulty: 0.24 | 13.6s
+✅ Gen 018/100 | Best Loss (neg eff): 3.1433 | elite best: 3.1433 | difficulty: 0.26 | 13.0s
+✅ Gen 019/100 | Best Loss (neg eff): 4.7205 | elite best: 4.7205 | difficulty: 0.27 | 12.6s
+✅ Gen 020/100 | Best Loss (neg eff): 2.8612 | elite best: 2.8612 | difficulty: 0.29 | 12.8s
+✅ Gen 021/100 | Best Loss (neg eff): 0.9611 | elite best: 0.9611 | difficulty: 0.30 | 15.3s
+✅ Gen 022/100 | Best Loss (neg eff): 3.4993 | elite best: 3.4993 | difficulty: 0.31 | 12.4s
+✅ Gen 023/100 | Best Loss (neg eff): 4.0912 | elite best: 4.0912 | difficulty: 0.33 | 11.8s
+✅ Gen 024/100 | Best Loss (neg eff): 3.7326 | elite best: 3.7326 | difficulty: 0.34 | 11.9s
+✅ Gen 025/100 | Best Loss (neg eff): 2.2048 | elite best: 2.2048 | difficulty: 0.36 | 12.7s
+✅ Gen 026/100 | Best Loss (neg eff): 2.9266 | elite best: 2.9266 | difficulty: 0.37 | 13.6s
+✅ Gen 027/100 | Best Loss (neg eff): 3.2852 | elite best: 3.2852 | difficulty: 0.39 | 13.0s
+✅ Gen 028/100 | Best Loss (neg eff): 3.4479 | elite best: 3.4479 | difficulty: 0.40 | 12.0s
+✅ Gen 029/100 | Best Loss (neg eff): 6.0435 | elite best: 6.0435 | difficulty: 0.41 | 12.0s
+✅ Gen 030/100 | Best Loss (neg eff): 1.7614 | elite best: 1.7614 | difficulty: 0.43 | 11.9s
+✅ Gen 031/100 | Best Loss (neg eff): 1.8379 | elite best: 1.8379 | difficulty: 0.44 | 13.4s
+✅ Gen 032/100 | Best Loss (neg eff): 4.1560 | elite best: 4.1560 | difficulty: 0.46 | 12.9s
+✅ Gen 033/100 | Best Loss (neg eff): 2.9512 | elite best: 2.9512 | difficulty: 0.47 | 11.7s
+✅ Gen 034/100 | Best Loss (neg eff): 3.1687 | elite best: 3.1687 | difficulty: 0.49 | 11.6s
+✅ Gen 035/100 | Best Loss (neg eff): 3.0051 | elite best: 3.0051 | difficulty: 0.50 | 11.8s
+✅ Gen 036/100 | Best Loss (neg eff): 1.2374 | elite best: 1.2374 | difficulty: 0.51 | 13.9s
+✅ Gen 037/100 | Best Loss (neg eff): 2.3358 | elite best: 2.3358 | difficulty: 0.53 | 11.4s
+✅ Gen 038/100 | Best Loss (neg eff): 3.6203 | elite best: 3.6203 | difficulty: 0.54 | 14.3s
+✅ Gen 039/100 | Best Loss (neg eff): 3.5165 | elite best: 3.5165 | difficulty: 0.56 | 12.3s
+✅ Gen 040/100 | Best Loss (neg eff): 2.5608 | elite best: 2.5608 | difficulty: 0.57 | 12.3s
+✅ Gen 041/100 | Best Loss (neg eff): 3.7017 | elite best: 3.7017 | difficulty: 0.59 | 14.1s
+✅ Gen 042/100 | Best Loss (neg eff): 6.1270 | elite best: 6.1270 | difficulty: 0.60 | 14.1s
+✅ Gen 043/100 | Best Loss (neg eff): 4.0607 | elite best: 4.0607 | difficulty: 0.61 | 17.5s
+✅ Gen 044/100 | Best Loss (neg eff): 3.1458 | elite best: 3.1458 | difficulty: 0.63 | 14.1s
+✅ Gen 045/100 | Best Loss (neg eff): 5.4164 | elite best: 5.4164 | difficulty: 0.64 | 12.8s
+✅ Gen 046/100 | Best Loss (neg eff): 4.6289 | elite best: 4.6289 | difficulty: 0.66 | 10.3s
+✅ Gen 047/100 | Best Loss (neg eff): 1.8580 | elite best: 1.8580 | difficulty: 0.67 | 10.7s
+✅ Gen 048/100 | Best Loss (neg eff): 2.8132 | elite best: 2.8132 | difficulty: 0.69 | 13.2s
+✅ Gen 049/100 | Best Loss (neg eff): 0.1741 | elite best: 0.1741 | difficulty: 0.70 | 10.2s
+✅ Gen 050/100 | Best Loss (neg eff): 4.1624 | elite best: 4.1624 | difficulty: 0.71 | 10.5s
+✅ Gen 051/100 | Best Loss (neg eff): 4.0828 | elite best: 4.0828 | difficulty: 0.73 | 17.3s
+✅ Gen 052/100 | Best Loss (neg eff): 2.6225 | elite best: 2.6225 | difficulty: 0.74 | 11.0s
+✅ Gen 053/100 | Best Loss (neg eff): 1.4782 | elite best: 1.4782 | difficulty: 0.76 | 12.0s
+✅ Gen 054/100 | Best Loss (neg eff): 3.8934 | elite best: 3.8934 | difficulty: 0.77 | 14.6s
+✅ Gen 055/100 | Best Loss (neg eff): 2.2986 | elite best: 2.2986 | difficulty: 0.79 | 11.1s
+✅ Gen 056/100 | Best Loss (neg eff): 2.2632 | elite best: 2.2632 | difficulty: 0.80 | 13.8s
+✅ Gen 057/100 | Best Loss (neg eff): 4.3216 | elite best: 4.3216 | difficulty: 0.81 | 11.7s
+✅ Gen 058/100 | Best Loss (neg eff): 2.8756 | elite best: 2.8756 | difficulty: 0.83 | 10.1s
+✅ Gen 059/100 | Best Loss (neg eff): 3.1400 | elite best: 3.1400 | difficulty: 0.84 | 9.9s
+✅ Gen 060/100 | Best Loss (neg eff): 4.0563 | elite best: 4.0563 | difficulty: 0.86 | 13.9s
+✅ Gen 061/100 | Best Loss (neg eff): 2.6732 | elite best: 2.6732 | difficulty: 0.87 | 9.9s
+✅ Gen 062/100 | Best Loss (neg eff): 4.7262 | elite best: 4.7262 | difficulty: 0.89 | 10.1s
+✅ Gen 063/100 | Best Loss (neg eff): 4.4524 | elite best: 4.4524 | difficulty: 0.90 | 10.8s
+✅ Gen 064/100 | Best Loss (neg eff): 6.1313 | elite best: 6.1313 | difficulty: 0.91 | 10.0s
+✅ Gen 065/100 | Best Loss (neg eff): 3.6161 | elite best: 3.6161 | difficulty: 0.93 | 13.4s
+✅ Gen 066/100 | Best Loss (neg eff): 2.1779 | elite best: 2.1779 | difficulty: 0.94 | 11.6s
+✅ Gen 067/100 | Best Loss (neg eff): 2.9546 | elite best: 2.9546 | difficulty: 0.96 | 9.8s
+✅ Gen 068/100 | Best Loss (neg eff): 4.7056 | elite best: 4.7056 | difficulty: 0.97 | 12.1s
+✅ Gen 069/100 | Best Loss (neg eff): 1.5245 | elite best: 1.5245 | difficulty: 0.99 | 10.7s
+✅ Gen 070/100 | Best Loss (neg eff): 4.6195 | elite best: 4.6195 | difficulty: 1.00 | 14.5s
+✅ Gen 071/100 | Best Loss (neg eff): 2.0445 | elite best: 2.0445 | difficulty: 1.00 | 10.1s
+✅ Gen 072/100 | Best Loss (neg eff): 5.2901 | elite best: 5.2901 | difficulty: 1.00 | 10.0s
+✅ Gen 073/100 | Best Loss (neg eff): 3.1586 | elite best: 3.1586 | difficulty: 1.00 | 9.8s
+✅ Gen 074/100 | Best Loss (neg eff): 5.4425 | elite best: 5.4425 | difficulty: 1.00 | 12.5s
+✅ Gen 075/100 | Best Loss (neg eff): 6.2629 | elite best: 6.2629 | difficulty: 1.00 | 11.9s
+✅ Gen 076/100 | Best Loss (neg eff): 1.9723 | elite best: 1.9723 | difficulty: 1.00 | 10.3s
+✅ Gen 077/100 | Best Loss (neg eff): 4.4601 | elite best: 4.4601 | difficulty: 1.00 | 12.8s
+✅ Gen 078/100 | Best Loss (neg eff): 6.1363 | elite best: 6.1363 | difficulty: 1.00 | 9.7s
+✅ Gen 079/100 | Best Loss (neg eff): 4.2529 | elite best: 4.2529 | difficulty: 1.00 | 10.5s
+✅ Gen 080/100 | Best Loss (neg eff): 3.7243 | elite best: 3.7243 | difficulty: 1.00 | 12.5s
+✅ Gen 081/100 | Best Loss (neg eff): 2.4719 | elite best: 2.4719 | difficulty: 1.00 | 10.2s
+✅ Gen 082/100 | Best Loss (neg eff): 1.8789 | elite best: 1.8789 | difficulty: 1.00 | 10.2s
+✅ Gen 083/100 | Best Loss (neg eff): 1.1956 | elite best: 1.1956 | difficulty: 1.00 | 15.4s
+✅ Gen 084/100 | Best Loss (neg eff): 2.4760 | elite best: 2.4760 | difficulty: 1.00 | 10.3s
+✅ Gen 085/100 | Best Loss (neg eff): 3.7876 | elite best: 3.7876 | difficulty: 1.00 | 10.4s
+✅ Gen 086/100 | Best Loss (neg eff): 2.5964 | elite best: 2.5964 | difficulty: 1.00 | 10.5s
+✅ Gen 087/100 | Best Loss (neg eff): 4.3896 | elite best: 4.3896 | difficulty: 1.00 | 16.0s
+✅ Gen 088/100 | Best Loss (neg eff): 3.0112 | elite best: 3.0112 | difficulty: 1.00 | 10.0s
+✅ Gen 089/100 | Best Loss (neg eff): 3.7062 | elite best: 3.7062 | difficulty: 1.00 | 10.3s
+✅ Gen 090/100 | Best Loss (neg eff): 3.0002 | elite best: 3.0002 | difficulty: 1.00 | 10.4s
+✅ Gen 091/100 | Best Loss (neg eff): 3.9105 | elite best: 3.9105 | difficulty: 1.00 | 12.8s
+✅ Gen 092/100 | Best Loss (neg eff): 3.8352 | elite best: 3.8352 | difficulty: 1.00 | 10.1s
+✅ Gen 093/100 | Best Loss (neg eff): 2.9482 | elite best: 2.9482 | difficulty: 1.00 | 9.9s
+✅ Gen 094/100 | Best Loss (neg eff): 2.5066 | elite best: 2.5066 | difficulty: 1.00 | 12.8s
+✅ Gen 095/100 | Best Loss (neg eff): 4.3414 | elite best: 4.3414 | difficulty: 1.00 | 11.9s
+✅ Gen 096/100 | Best Loss (neg eff): 3.0421 | elite best: 3.0421 | difficulty: 1.00 | 10.1s
+✅ Gen 097/100 | Best Loss (neg eff): 2.4505 | elite best: 2.4505 | difficulty: 1.00 | 10.2s
+✅ Gen 098/100 | Best Loss (neg eff): 2.3612 | elite best: 2.3612 | difficulty: 1.00 | 11.4s
+✅ Gen 099/100 | Best Loss (neg eff): 0.8740 | elite best: 0.8740 | difficulty: 1.00 | 11.3s
+✅ Gen 100/100 | Best Loss (neg eff): 3.3924 | elite best: 3.3924 | difficulty: 1.00 | 14.3s
+   (stage wall-clock: 1212.4s)
+💾 Stage 'vision_gate_curriculum_partial' complete. Best efficiency: -3.3924. Saved hebbian_vision_gate_curriculum_partial_vision_best.npy
+
+######################################################################
+### SEED 123 (2/3) -> hebbian_results_2gate/vision_gate_curriculum_partial/seed_123/
+######################################################################
+↳ Seeding 'vision_gate_curriculum_partial' from existing genome 'hebbian_results_vision_v3/n10/hebbian_vision_flock_vision_best.npy' (instead of a fresh random one).
+
+======================================================================
+🧬 STAGE: vision_gate_curriculum_partial  ({'sensor_mode': 'vision', 'n_agents': 10, 'n_repeats': 3, 'max_battery': None, 'min_battery': None, 'nx': None, 'ny': None, 'use_battery_sensor': True, 'wind_enabled': False, 'gradient_map_path': None, 'freq_choices': (), 'gate_enabled': False, 'n_gates': 2, 'finish_x_choices': (), 'gate_opening_width': 1.0, 'post_gate_distance': 1.5, 'max_steps': 400})
+======================================================================
+(15_w,30)-aCMA-ES (mu_w=8.6,w_1=20%) in dimension 960 (seed=124, Wed Sep  9 17:09:19 2026)
+✅ Gen 001/100 | Best Loss (neg eff): 19.1448 | elite best: 19.1448 | difficulty: 0.01 | 16.2s
+✅ Gen 002/100 | Best Loss (neg eff): 9.1589 | elite best: 9.1589 | difficulty: 0.03 | 15.7s
+✅ Gen 003/100 | Best Loss (neg eff): 10.0662 | elite best: 10.0662 | difficulty: 0.04 | 18.6s
+✅ Gen 004/100 | Best Loss (neg eff): 9.1770 | elite best: 9.1770 | difficulty: 0.06 | 16.1s
+✅ Gen 005/100 | Best Loss (neg eff): 6.2058 | elite best: 6.2058 | difficulty: 0.07 | 15.8s
+✅ Gen 006/100 | Best Loss (neg eff): 5.3395 | elite best: 5.3395 | difficulty: 0.09 | 19.7s
+✅ Gen 007/100 | Best Loss (neg eff): 7.9778 | elite best: 7.9778 | difficulty: 0.10 | 14.4s
+✅ Gen 008/100 | Best Loss (neg eff): 2.0468 | elite best: 2.0468 | difficulty: 0.11 | 16.6s
+✅ Gen 009/100 | Best Loss (neg eff): 3.0992 | elite best: 3.0992 | difficulty: 0.13 | 15.4s
+✅ Gen 010/100 | Best Loss (neg eff): 3.0731 | elite best: 3.0731 | difficulty: 0.14 | 13.6s
+✅ Gen 011/100 | Best Loss (neg eff): 5.8557 | elite best: 5.8557 | difficulty: 0.16 | 14.8s
+✅ Gen 012/100 | Best Loss (neg eff): 1.5878 | elite best: 1.5878 | difficulty: 0.17 | 18.2s
+✅ Gen 013/100 | Best Loss (neg eff): 2.2056 | elite best: 2.2056 | difficulty: 0.19 | 13.0s
+✅ Gen 014/100 | Best Loss (neg eff): 0.7508 | elite best: 0.7508 | difficulty: 0.20 | 13.3s
+✅ Gen 015/100 | Best Loss (neg eff): 1.6916 | elite best: 1.6916 | difficulty: 0.21 | 17.4s
+✅ Gen 016/100 | Best Loss (neg eff): 2.3074 | elite best: 2.3074 | difficulty: 0.23 | 13.5s
+✅ Gen 017/100 | Best Loss (neg eff): 0.7688 | elite best: 0.7688 | difficulty: 0.24 | 12.5s
+✅ Gen 018/100 | Best Loss (neg eff): 0.3568 | elite best: 0.3568 | difficulty: 0.26 | 13.1s
+✅ Gen 019/100 | Best Loss (neg eff): 0.4465 | elite best: 0.4465 | difficulty: 0.27 | 16.4s
+✅ Gen 020/100 | Best Loss (neg eff): 1.4934 | elite best: 1.4934 | difficulty: 0.29 | 13.2s
+✅ Gen 021/100 | Best Loss (neg eff): 0.4262 | elite best: 0.4262 | difficulty: 0.30 | 15.0s
+✅ Gen 022/100 | Best Loss (neg eff): 0.7733 | elite best: 0.7733 | difficulty: 0.31 | 13.3s
+✅ Gen 023/100 | Best Loss (neg eff): 2.3436 | elite best: 2.3436 | difficulty: 0.33 | 15.9s
+✅ Gen 024/100 | Best Loss (neg eff): 1.0191 | elite best: 1.0191 | difficulty: 0.34 | 14.3s
+✅ Gen 025/100 | Best Loss (neg eff): 0.7879 | elite best: 0.7879 | difficulty: 0.36 | 12.9s
+✅ Gen 026/100 | Best Loss (neg eff): 0.2429 | elite best: 0.2429 | difficulty: 0.37 | 16.4s
+✅ Gen 027/100 | Best Loss (neg eff): 1.8121 | elite best: 1.8121 | difficulty: 0.39 | 11.4s
+✅ Gen 028/100 | Best Loss (neg eff): 2.3124 | elite best: 2.3124 | difficulty: 0.40 | 13.1s
+✅ Gen 029/100 | Best Loss (neg eff): 1.1836 | elite best: 1.1836 | difficulty: 0.41 | 11.9s
+✅ Gen 030/100 | Best Loss (neg eff): 1.5394 | elite best: 1.5394 | difficulty: 0.43 | 11.8s
+✅ Gen 031/100 | Best Loss (neg eff): 2.2001 | elite best: 2.2001 | difficulty: 0.44 | 16.5s
+✅ Gen 032/100 | Best Loss (neg eff): 0.6569 | elite best: 0.6569 | difficulty: 0.46 | 11.4s
+✅ Gen 033/100 | Best Loss (neg eff): 0.9812 | elite best: 0.9812 | difficulty: 0.47 | 11.1s
+✅ Gen 034/100 | Best Loss (neg eff): 1.6903 | elite best: 1.6903 | difficulty: 0.49 | 12.0s
+✅ Gen 035/100 | Best Loss (neg eff): 1.7682 | elite best: 1.7682 | difficulty: 0.50 | 13.5s
+✅ Gen 036/100 | Best Loss (neg eff): 1.8880 | elite best: 1.8880 | difficulty: 0.51 | 10.7s
+✅ Gen 037/100 | Best Loss (neg eff): 2.3952 | elite best: 2.3952 | difficulty: 0.53 | 10.4s
+✅ Gen 038/100 | Best Loss (neg eff): 1.0646 | elite best: 1.0646 | difficulty: 0.54 | 13.6s
+✅ Gen 039/100 | Best Loss (neg eff): 0.6807 | elite best: 0.6807 | difficulty: 0.56 | 13.4s
+✅ Gen 040/100 | Best Loss (neg eff): 2.0447 | elite best: 2.0447 | difficulty: 0.57 | 10.8s
+✅ Gen 041/100 | Best Loss (neg eff): 3.6217 | elite best: 3.6217 | difficulty: 0.59 | 10.2s
+✅ Gen 042/100 | Best Loss (neg eff): 2.6972 | elite best: 2.6972 | difficulty: 0.60 | 11.6s
+✅ Gen 043/100 | Best Loss (neg eff): 2.9040 | elite best: 2.9040 | difficulty: 0.61 | 15.1s
+✅ Gen 044/100 | Best Loss (neg eff): 3.7413 | elite best: 3.7413 | difficulty: 0.63 | 10.6s
+✅ Gen 045/100 | Best Loss (neg eff): 2.6380 | elite best: 2.6380 | difficulty: 0.64 | 10.7s
+✅ Gen 046/100 | Best Loss (neg eff): 2.2130 | elite best: 2.2130 | difficulty: 0.66 | 11.0s
+✅ Gen 047/100 | Best Loss (neg eff): 1.6276 | elite best: 1.6276 | difficulty: 0.67 | 11.4s
+✅ Gen 048/100 | Best Loss (neg eff): 3.6084 | elite best: 3.6084 | difficulty: 0.69 | 12.8s
+✅ Gen 049/100 | Best Loss (neg eff): 2.3806 | elite best: 2.3806 | difficulty: 0.70 | 11.0s
+✅ Gen 050/100 | Best Loss (neg eff): 3.3856 | elite best: 3.3856 | difficulty: 0.71 | 10.4s
+✅ Gen 051/100 | Best Loss (neg eff): 2.6935 | elite best: 2.6935 | difficulty: 0.73 | 11.6s
+✅ Gen 052/100 | Best Loss (neg eff): 3.0234 | elite best: 3.0234 | difficulty: 0.74 | 14.8s
+✅ Gen 053/100 | Best Loss (neg eff): 2.6088 | elite best: 2.6088 | difficulty: 0.76 | 12.1s
+✅ Gen 054/100 | Best Loss (neg eff): 3.5868 | elite best: 3.5868 | difficulty: 0.77 | 11.2s
+✅ Gen 055/100 | Best Loss (neg eff): 3.3422 | elite best: 3.3422 | difficulty: 0.79 | 11.8s
+✅ Gen 056/100 | Best Loss (neg eff): 0.9149 | elite best: 0.9149 | difficulty: 0.80 | 11.9s
+✅ Gen 057/100 | Best Loss (neg eff): 0.5116 | elite best: 0.5116 | difficulty: 0.81 | 10.3s
+✅ Gen 058/100 | Best Loss (neg eff): 3.4121 | elite best: 3.4121 | difficulty: 0.83 | 10.4s
+✅ Gen 059/100 | Best Loss (neg eff): 4.3234 | elite best: 4.3234 | difficulty: 0.84 | 12.3s
+✅ Gen 060/100 | Best Loss (neg eff): 3.4278 | elite best: 3.4278 | difficulty: 0.86 | 10.0s
+✅ Gen 061/100 | Best Loss (neg eff): 2.6228 | elite best: 2.6228 | difficulty: 0.87 | 15.0s
+✅ Gen 062/100 | Best Loss (neg eff): 3.1359 | elite best: 3.1359 | difficulty: 0.89 | 10.2s
+✅ Gen 063/100 | Best Loss (neg eff): 3.8262 | elite best: 3.8262 | difficulty: 0.90 | 10.7s
+✅ Gen 064/100 | Best Loss (neg eff): 2.1444 | elite best: 2.1444 | difficulty: 0.91 | 11.3s
+✅ Gen 065/100 | Best Loss (neg eff): 3.9457 | elite best: 3.9457 | difficulty: 0.93 | 10.3s
+✅ Gen 066/100 | Best Loss (neg eff): 3.7246 | elite best: 3.7246 | difficulty: 0.94 | 15.4s
+✅ Gen 067/100 | Best Loss (neg eff): 3.3538 | elite best: 3.3538 | difficulty: 0.96 | 9.6s
+✅ Gen 068/100 | Best Loss (neg eff): 2.1929 | elite best: 2.1929 | difficulty: 0.97 | 10.0s
+✅ Gen 069/100 | Best Loss (neg eff): 0.1731 | elite best: 0.1731 | difficulty: 0.99 | 13.9s
+✅ Gen 070/100 | Best Loss (neg eff): 3.8920 | elite best: 3.8920 | difficulty: 1.00 | 10.8s
+✅ Gen 071/100 | Best Loss (neg eff): 2.5511 | elite best: 2.5511 | difficulty: 1.00 | 10.2s
+✅ Gen 072/100 | Best Loss (neg eff): 3.1968 | elite best: 3.1968 | difficulty: 1.00 | 12.7s
+✅ Gen 073/100 | Best Loss (neg eff): 0.7421 | elite best: 0.7421 | difficulty: 1.00 | 11.8s
+✅ Gen 074/100 | Best Loss (neg eff): 2.9732 | elite best: 2.9732 | difficulty: 1.00 | 10.9s
+✅ Gen 075/100 | Best Loss (neg eff): 1.6383 | elite best: 1.6383 | difficulty: 1.00 | 13.4s
+✅ Gen 076/100 | Best Loss (neg eff): 2.0664 | elite best: 2.0664 | difficulty: 1.00 | 10.8s
+✅ Gen 077/100 | Best Loss (neg eff): 2.2414 | elite best: 2.2414 | difficulty: 1.00 | 15.5s
+✅ Gen 078/100 | Best Loss (neg eff): 3.5103 | elite best: 3.5103 | difficulty: 1.00 | 11.5s
+✅ Gen 079/100 | Best Loss (neg eff): 0.5488 | elite best: 0.5488 | difficulty: 1.00 | 10.5s
+✅ Gen 080/100 | Best Loss (neg eff): 4.4088 | elite best: 4.4088 | difficulty: 1.00 | 12.0s
+✅ Gen 081/100 | Best Loss (neg eff): 2.8606 | elite best: 2.8606 | difficulty: 1.00 | 12.2s
+✅ Gen 082/100 | Best Loss (neg eff): 4.8803 | elite best: 4.8803 | difficulty: 1.00 | 9.9s
+✅ Gen 083/100 | Best Loss (neg eff): 5.1495 | elite best: 5.1495 | difficulty: 1.00 | 9.8s
+✅ Gen 084/100 | Best Loss (neg eff): 2.1110 | elite best: 2.1110 | difficulty: 1.00 | 10.3s
+✅ Gen 085/100 | Best Loss (neg eff): 2.9425 | elite best: 2.9425 | difficulty: 1.00 | 12.9s
+✅ Gen 086/100 | Best Loss (neg eff): 1.2317 | elite best: 1.2317 | difficulty: 1.00 | 9.7s
+✅ Gen 087/100 | Best Loss (neg eff): 2.1913 | elite best: 2.1913 | difficulty: 1.00 | 9.8s
+✅ Gen 088/100 | Best Loss (neg eff): 2.6975 | elite best: 2.6975 | difficulty: 1.00 | 13.8s
+✅ Gen 089/100 | Best Loss (neg eff): 2.7003 | elite best: 2.7003 | difficulty: 1.00 | 9.9s
+✅ Gen 090/100 | Best Loss (neg eff): 4.0563 | elite best: 4.0563 | difficulty: 1.00 | 10.0s
+✅ Gen 091/100 | Best Loss (neg eff): 2.6044 | elite best: 2.6044 | difficulty: 1.00 | 11.7s
+✅ Gen 092/100 | Best Loss (neg eff): 2.0138 | elite best: 2.0138 | difficulty: 1.00 | 11.9s
+✅ Gen 093/100 | Best Loss (neg eff): 1.8270 | elite best: 1.8270 | difficulty: 1.00 | 14.6s
+✅ Gen 094/100 | Best Loss (neg eff): 2.2605 | elite best: 2.2605 | difficulty: 1.00 | 11.1s
+✅ Gen 095/100 | Best Loss (neg eff): 2.7792 | elite best: 2.7792 | difficulty: 1.00 | 11.2s
+✅ Gen 096/100 | Best Loss (neg eff): 1.6073 | elite best: 1.6073 | difficulty: 1.00 | 16.0s
+✅ Gen 097/100 | Best Loss (neg eff): 3.5719 | elite best: 3.5719 | difficulty: 1.00 | 10.4s
+✅ Gen 098/100 | Best Loss (neg eff): 0.8702 | elite best: 0.8702 | difficulty: 1.00 | 11.2s
+✅ Gen 099/100 | Best Loss (neg eff): 1.5231 | elite best: 1.5231 | difficulty: 1.00 | 16.8s
+✅ Gen 100/100 | Best Loss (neg eff): 4.5165 | elite best: 4.5165 | difficulty: 1.00 | 10.7s
+   (stage wall-clock: 1268.4s)
+💾 Stage 'vision_gate_curriculum_partial' complete. Best efficiency: -4.5165. Saved hebbian_vision_gate_curriculum_partial_vision_best.npy
+
+######################################################################
+### SEED 777 (3/3) -> hebbian_results_2gate/vision_gate_curriculum_partial/seed_777/
+######################################################################
+↳ Seeding 'vision_gate_curriculum_partial' from existing genome 'hebbian_results_vision_v3/n10/hebbian_vision_flock_vision_best.npy' (instead of a fresh random one).
+
+======================================================================
+🧬 STAGE: vision_gate_curriculum_partial  ({'sensor_mode': 'vision', 'n_agents': 10, 'n_repeats': 3, 'max_battery': None, 'min_battery': None, 'nx': None, 'ny': None, 'use_battery_sensor': True, 'wind_enabled': False, 'gradient_map_path': None, 'freq_choices': (), 'gate_enabled': False, 'n_gates': 2, 'finish_x_choices': (), 'gate_opening_width': 1.0, 'post_gate_distance': 1.5, 'max_steps': 400})
+======================================================================
+(15_w,30)-aCMA-ES (mu_w=8.6,w_1=20%) in dimension 960 (seed=778, Wed Sep  9 17:30:28 2026)
+✅ Gen 001/100 | Best Loss (neg eff): 13.2562 | elite best: 13.2562 | difficulty: 0.01 | 17.6s
+✅ Gen 002/100 | Best Loss (neg eff): 5.1457 | elite best: 5.1457 | difficulty: 0.03 | 19.8s
+✅ Gen 003/100 | Best Loss (neg eff): 15.2642 | elite best: 15.2642 | difficulty: 0.04 | 15.3s
+✅ Gen 004/100 | Best Loss (neg eff): 15.9622 | elite best: 15.9622 | difficulty: 0.06 | 19.0s
+✅ Gen 005/100 | Best Loss (neg eff): 7.0832 | elite best: 7.0832 | difficulty: 0.07 | 15.8s
+✅ Gen 006/100 | Best Loss (neg eff): -0.6957 | elite best: -0.6957 | difficulty: 0.09 | 19.3s
+✅ Gen 007/100 | Best Loss (neg eff): 9.4263 | elite best: 9.4263 | difficulty: 0.10 | 14.9s
+✅ Gen 008/100 | Best Loss (neg eff): 6.8966 | elite best: 6.8966 | difficulty: 0.11 | 14.1s
+✅ Gen 009/100 | Best Loss (neg eff): 9.4202 | elite best: 9.4202 | difficulty: 0.13 | 20.1s
+✅ Gen 010/100 | Best Loss (neg eff): -0.0272 | elite best: -0.0272 | difficulty: 0.14 | 15.0s
+✅ Gen 011/100 | Best Loss (neg eff): 5.2463 | elite best: 5.2463 | difficulty: 0.16 | 14.5s
+✅ Gen 012/100 | Best Loss (neg eff): 3.6760 | elite best: 3.6760 | difficulty: 0.17 | 18.9s
+✅ Gen 013/100 | Best Loss (neg eff): 5.4367 | elite best: 5.4367 | difficulty: 0.19 | 13.1s
+✅ Gen 014/100 | Best Loss (neg eff): 4.3365 | elite best: 4.3365 | difficulty: 0.20 | 12.8s
+✅ Gen 015/100 | Best Loss (neg eff): 1.4958 | elite best: 1.4958 | difficulty: 0.21 | 18.2s
+✅ Gen 016/100 | Best Loss (neg eff): 5.3662 | elite best: 5.3662 | difficulty: 0.23 | 12.7s
+✅ Gen 017/100 | Best Loss (neg eff): 2.3313 | elite best: 2.3313 | difficulty: 0.24 | 12.2s
+✅ Gen 018/100 | Best Loss (neg eff): 1.5962 | elite best: 1.5962 | difficulty: 0.26 | 13.5s
+✅ Gen 019/100 | Best Loss (neg eff): 0.6343 | elite best: 0.6343 | difficulty: 0.27 | 16.0s
+✅ Gen 020/100 | Best Loss (neg eff): 1.2962 | elite best: 1.2962 | difficulty: 0.29 | 12.1s
+✅ Gen 021/100 | Best Loss (neg eff): 1.5914 | elite best: 1.5914 | difficulty: 0.30 | 12.6s
+✅ Gen 022/100 | Best Loss (neg eff): 0.9578 | elite best: 0.9578 | difficulty: 0.31 | 17.5s
+✅ Gen 023/100 | Best Loss (neg eff): 1.9986 | elite best: 1.9986 | difficulty: 0.33 | 11.8s
+✅ Gen 024/100 | Best Loss (neg eff): 3.2564 | elite best: 3.2564 | difficulty: 0.34 | 13.0s
+✅ Gen 025/100 | Best Loss (neg eff): 1.0877 | elite best: 1.0877 | difficulty: 0.36 | 13.5s
+✅ Gen 026/100 | Best Loss (neg eff): 0.4419 | elite best: 0.4419 | difficulty: 0.37 | 12.8s
+✅ Gen 027/100 | Best Loss (neg eff): 2.0279 | elite best: 2.0279 | difficulty: 0.39 | 13.8s
+✅ Gen 028/100 | Best Loss (neg eff): 3.3574 | elite best: 3.3574 | difficulty: 0.40 | 14.4s
+✅ Gen 029/100 | Best Loss (neg eff): 0.3307 | elite best: 0.3307 | difficulty: 0.41 | 15.5s
+✅ Gen 030/100 | Best Loss (neg eff): 0.3397 | elite best: 0.3397 | difficulty: 0.43 | 11.9s
+✅ Gen 031/100 | Best Loss (neg eff): 2.4002 | elite best: 2.4002 | difficulty: 0.44 | 13.1s
+✅ Gen 032/100 | Best Loss (neg eff): 1.4552 | elite best: 1.4552 | difficulty: 0.46 | 16.8s
+✅ Gen 033/100 | Best Loss (neg eff): 1.5309 | elite best: 1.5309 | difficulty: 0.47 | 13.1s
+✅ Gen 034/100 | Best Loss (neg eff): 2.4739 | elite best: 2.4739 | difficulty: 0.49 | 19.0s
+✅ Gen 035/100 | Best Loss (neg eff): 2.2635 | elite best: 2.2635 | difficulty: 0.50 | 13.0s
+✅ Gen 036/100 | Best Loss (neg eff): 0.5629 | elite best: 0.5629 | difficulty: 0.51 | 12.8s
+✅ Gen 037/100 | Best Loss (neg eff): 1.6930 | elite best: 1.6930 | difficulty: 0.53 | 16.1s
+✅ Gen 038/100 | Best Loss (neg eff): 0.7091 | elite best: 0.7091 | difficulty: 0.54 | 11.9s
+✅ Gen 039/100 | Best Loss (neg eff): 1.2121 | elite best: 1.2121 | difficulty: 0.56 | 16.3s
+✅ Gen 040/100 | Best Loss (neg eff): 2.1119 | elite best: 2.1119 | difficulty: 0.57 | 15.0s
+✅ Gen 041/100 | Best Loss (neg eff): 1.4932 | elite best: 1.4932 | difficulty: 0.59 | 13.4s
+✅ Gen 042/100 | Best Loss (neg eff): 2.4399 | elite best: 2.4399 | difficulty: 0.60 | 13.0s
+✅ Gen 043/100 | Best Loss (neg eff): 4.2114 | elite best: 4.2114 | difficulty: 0.61 | 18.8s
+✅ Gen 044/100 | Best Loss (neg eff): 0.2096 | elite best: 0.2096 | difficulty: 0.63 | 12.8s
+✅ Gen 045/100 | Best Loss (neg eff): 3.5227 | elite best: 3.5227 | difficulty: 0.64 | 11.8s
+✅ Gen 046/100 | Best Loss (neg eff): 3.9339 | elite best: 3.9339 | difficulty: 0.66 | 14.7s
+✅ Gen 047/100 | Best Loss (neg eff): 3.4841 | elite best: 3.4841 | difficulty: 0.67 | 13.6s
+✅ Gen 048/100 | Best Loss (neg eff): 4.1091 | elite best: 4.1091 | difficulty: 0.69 | 14.0s
+✅ Gen 049/100 | Best Loss (neg eff): 1.3331 | elite best: 1.3331 | difficulty: 0.70 | 12.9s
+✅ Gen 050/100 | Best Loss (neg eff): 1.5916 | elite best: 1.5916 | difficulty: 0.71 | 13.0s
+✅ Gen 051/100 | Best Loss (neg eff): 3.7614 | elite best: 3.7614 | difficulty: 0.73 | 18.9s
+✅ Gen 052/100 | Best Loss (neg eff): 2.7352 | elite best: 2.7352 | difficulty: 0.74 | 11.2s
+✅ Gen 053/100 | Best Loss (neg eff): 3.3405 | elite best: 3.3405 | difficulty: 0.76 | 11.3s
+✅ Gen 054/100 | Best Loss (neg eff): 2.0546 | elite best: 2.0546 | difficulty: 0.77 | 12.5s
+✅ Gen 055/100 | Best Loss (neg eff): 2.7338 | elite best: 2.7338 | difficulty: 0.79 | 16.5s
+✅ Gen 056/100 | Best Loss (neg eff): 4.5622 | elite best: 4.5622 | difficulty: 0.80 | 11.3s
+✅ Gen 057/100 | Best Loss (neg eff): 1.5520 | elite best: 1.5520 | difficulty: 0.81 | 11.8s
+✅ Gen 058/100 | Best Loss (neg eff): 4.0661 | elite best: 4.0661 | difficulty: 0.83 | 14.6s
+✅ Gen 059/100 | Best Loss (neg eff): 3.3337 | elite best: 3.3337 | difficulty: 0.84 | 13.6s
+✅ Gen 060/100 | Best Loss (neg eff): 2.6813 | elite best: 2.6813 | difficulty: 0.86 | 11.1s
+✅ Gen 061/100 | Best Loss (neg eff): 1.6240 | elite best: 1.6240 | difficulty: 0.87 | 11.9s
+✅ Gen 062/100 | Best Loss (neg eff): 1.5843 | elite best: 1.5843 | difficulty: 0.89 | 18.8s
+✅ Gen 063/100 | Best Loss (neg eff): 2.9561 | elite best: 2.9561 | difficulty: 0.90 | 12.2s
+✅ Gen 064/100 | Best Loss (neg eff): 1.9629 | elite best: 1.9629 | difficulty: 0.91 | 12.0s
+✅ Gen 065/100 | Best Loss (neg eff): 1.9904 | elite best: 1.9904 | difficulty: 0.93 | 14.2s
+✅ Gen 066/100 | Best Loss (neg eff): 3.6229 | elite best: 3.6229 | difficulty: 0.94 | 15.2s
+✅ Gen 067/100 | Best Loss (neg eff): 3.2537 | elite best: 3.2537 | difficulty: 0.96 | 10.8s
+✅ Gen 068/100 | Best Loss (neg eff): 4.5387 | elite best: 4.5387 | difficulty: 0.97 | 10.5s
+✅ Gen 069/100 | Best Loss (neg eff): 1.8546 | elite best: 1.8546 | difficulty: 0.99 | 13.5s
+✅ Gen 070/100 | Best Loss (neg eff): 3.8861 | elite best: 3.8861 | difficulty: 1.00 | 12.5s
+✅ Gen 071/100 | Best Loss (neg eff): 0.5042 | elite best: 0.5042 | difficulty: 1.00 | 11.7s
+✅ Gen 072/100 | Best Loss (neg eff): 2.5633 | elite best: 2.5633 | difficulty: 1.00 | 14.1s
+✅ Gen 073/100 | Best Loss (neg eff): 4.3015 | elite best: 4.3015 | difficulty: 1.00 | 10.8s
+✅ Gen 074/100 | Best Loss (neg eff): 0.3153 | elite best: 0.3153 | difficulty: 1.00 | 12.0s
+✅ Gen 075/100 | Best Loss (neg eff): 1.4261 | elite best: 1.4261 | difficulty: 1.00 | 13.6s
+✅ Gen 076/100 | Best Loss (neg eff): 1.6566 | elite best: 1.6566 | difficulty: 1.00 | 10.6s
+✅ Gen 077/100 | Best Loss (neg eff): 2.9792 | elite best: 2.9792 | difficulty: 1.00 | 10.7s
+✅ Gen 078/100 | Best Loss (neg eff): 3.7459 | elite best: 3.7459 | difficulty: 1.00 | 13.0s
+✅ Gen 079/100 | Best Loss (neg eff): 2.7933 | elite best: 2.7933 | difficulty: 1.00 | 13.8s
+✅ Gen 080/100 | Best Loss (neg eff): 1.6707 | elite best: 1.6707 | difficulty: 1.00 | 10.6s
+✅ Gen 081/100 | Best Loss (neg eff): 2.5382 | elite best: 2.5382 | difficulty: 1.00 | 10.5s
+✅ Gen 082/100 | Best Loss (neg eff): 1.0108 | elite best: 1.0108 | difficulty: 1.00 | 15.0s
+✅ Gen 083/100 | Best Loss (neg eff): 2.4831 | elite best: 2.4831 | difficulty: 1.00 | 10.1s
+✅ Gen 084/100 | Best Loss (neg eff): 2.9633 | elite best: 2.9633 | difficulty: 1.00 | 9.9s
+✅ Gen 085/100 | Best Loss (neg eff): 4.9887 | elite best: 4.9887 | difficulty: 1.00 | 11.2s
+✅ Gen 086/100 | Best Loss (neg eff): 1.8289 | elite best: 1.8289 | difficulty: 1.00 | 14.3s
+✅ Gen 087/100 | Best Loss (neg eff): 2.5956 | elite best: 2.5956 | difficulty: 1.00 | 9.8s
+✅ Gen 088/100 | Best Loss (neg eff): 2.7027 | elite best: 2.7027 | difficulty: 1.00 | 10.0s
+✅ Gen 089/100 | Best Loss (neg eff): 2.4498 | elite best: 2.4498 | difficulty: 1.00 | 10.3s
+✅ Gen 090/100 | Best Loss (neg eff): 1.5370 | elite best: 1.5370 | difficulty: 1.00 | 15.4s
+✅ Gen 091/100 | Best Loss (neg eff): 2.8582 | elite best: 2.8582 | difficulty: 1.00 | 11.2s
+✅ Gen 092/100 | Best Loss (neg eff): 0.8087 | elite best: 0.8087 | difficulty: 1.00 | 9.8s
+✅ Gen 093/100 | Best Loss (neg eff): 2.9385 | elite best: 2.9385 | difficulty: 1.00 | 10.9s
+✅ Gen 094/100 | Best Loss (neg eff): 2.4633 | elite best: 2.4633 | difficulty: 1.00 | 10.0s
+✅ Gen 095/100 | Best Loss (neg eff): 3.6137 | elite best: 3.6137 | difficulty: 1.00 | 10.2s
+✅ Gen 096/100 | Best Loss (neg eff): 3.0545 | elite best: 3.0545 | difficulty: 1.00 | 13.8s
+✅ Gen 097/100 | Best Loss (neg eff): 1.7733 | elite best: 1.7733 | difficulty: 1.00 | 11.4s
+✅ Gen 098/100 | Best Loss (neg eff): 4.2580 | elite best: 4.2580 | difficulty: 1.00 | 9.6s
+✅ Gen 099/100 | Best Loss (neg eff): 1.9071 | elite best: 1.9071 | difficulty: 1.00 | 10.1s
+✅ Gen 100/100 | Best Loss (neg eff): 1.7772 | elite best: 1.7772 | difficulty: 1.00 | 12.7s
+   (stage wall-clock: 1347.9s)
+💾 Stage 'vision_gate_curriculum_partial' complete. Best efficiency: -1.7772. Saved hebbian_vision_gate_curriculum_partial_vision_best.npy
+
+🎉 3-seed sweep complete. Results in 'hebbian_results_2gate/vision_gate_curriculum_partial/seed_<seed>/'.

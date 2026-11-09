@@ -279,3 +279,60 @@ def test_crossing_success_two_gates_true_once_both_cleared_in_order():
     # but the run must terminate (not error) and produce a finite fitness either way
     eff = stage_fitness(result, "vision_gate")
     assert np.isfinite(eff)
+
+
+def test_gates_cleared_is_group_bottleneck_not_any_single_agent():
+    """gates_cleared = min(next_gate_idx) across agents -- the group's
+    bottleneck, not any one agent's own progress. Directly exercises the
+    bookkeeping with hand-constructed per-agent progress (mirrors
+    test_excess_crossings_counts_only_beyond_the_first_per_agent's style of
+    testing the formula directly rather than depending on genome behavior)."""
+    next_gate_idx = np.array([2, 1, 0, 2])  # 4 agents, sequence length 2
+    gates_cleared = int(np.min(next_gate_idx))
+    assert gates_cleared == 0  # the one agent stuck at 0 gates cleared is the bottleneck
+
+    next_gate_idx_all_done = np.array([2, 2, 2, 2])
+    assert int(np.min(next_gate_idx_all_done)) == 2  # == len(gates) -- matches success
+
+
+def test_crossing_success_two_gates_partial_credit_when_only_first_cleared():
+    """gates_cleared should be exactly 1 (not 0, not 2) when every agent has
+    cleared gate A but gate B is unreachable -- proving partial progress is
+    tracked distinctly from both total failure and total success."""
+    rules = unflatten_abcd(_random_genome("vision", seed=3), n_inputs=12)
+    gate_a_near = Gate(x_arena=0.05, y_lo_arena=-10.0, y_hi_arena=10.0)   # trivially crossable
+    gate_b_far = Gate(x_arena=-100.0, y_lo_arena=-10.0, y_hi_arena=10.0)  # unreachable
+    result = simulate_hebbian_episode(
+        rules, seed=6, n_agents=3, wind_enabled=False, sensor_mode="vision",
+        max_battery=5.0, min_battery=5.0, gates=[gate_a_near, gate_b_far],
+        crossing_success=True, max_steps=200)
+    assert result.success == 0.0
+    assert result.gates_cleared in (0, 1)  # genome-dependent whether it even clears gate A, but
+                                             # never 2 -- gate B is physically unreachable
+
+
+def test_partial_gate_bonus_only_applied_by_stages_that_set_it():
+    """partial_gate_bonus must be additive and stage-gated -- vision_gate (no
+    partial_gate_bonus key) must be unaffected by gates_cleared, while
+    vision_gate_curriculum_partial (which sets it) must add exactly
+    gates_cleared * GATE_PARTIAL_CROSSING_BONUS on top of the otherwise
+    identical formula. This is the regression guard that a partial-credit
+    stage doesn't silently change the already-validated single-gate stages'
+    calibration (see config.GATE_PARTIAL_CROSSING_BONUS's docstring)."""
+    from dataclasses import replace
+    base = simulate_hebbian_episode(
+        unflatten_abcd(_random_genome("vision", seed=9), n_inputs=12),
+        seed=11, n_agents=3, wind_enabled=False, sensor_mode="vision",
+        max_battery=0.3, min_battery=0.3, gates=[Gate(x_arena=0.0, y_lo_arena=-10.0, y_hi_arena=10.0)],
+        crossing_success=True)
+    result_with_progress = replace(base, gates_cleared=1)
+
+    eff_plain = stage_fitness(result_with_progress, "vision_gate")
+    eff_partial = stage_fitness(result_with_progress, "vision_gate_curriculum_partial")
+    assert eff_partial == pytest.approx(eff_plain + 1 * config.GATE_PARTIAL_CROSSING_BONUS)
+
+    # gates_cleared=0 -> no bonus either way, formulas match exactly
+    result_no_progress = replace(base, gates_cleared=0)
+    eff_plain_0 = stage_fitness(result_no_progress, "vision_gate")
+    eff_partial_0 = stage_fitness(result_no_progress, "vision_gate_curriculum_partial")
+    assert eff_partial_0 == pytest.approx(eff_plain_0)

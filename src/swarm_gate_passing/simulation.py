@@ -59,6 +59,12 @@ class EpisodeResult:
                                        # meaningful when crossing_success=True; penalizes going back
                                        # and forth through any gate beyond each agent's necessary first
                                        # crossing of it (which is free -- see stage_fitness)
+    gates_cleared: int = 0            # min(next_gate_idx) across agents -- how many gates of the
+                                       # required SEQUENCE every agent has cleared so far (the group's
+                                       # bottleneck, not any one agent's own progress); only meaningful
+                                       # when crossing_success=True. Equals len(gates) exactly when
+                                       # success=True; see GATE_PARTIAL_CROSSING_BONUS/stage_fitness for
+                                       # why a value short of the full sequence is still worth rewarding.
     telemetry: Optional[dict] = None
 
 
@@ -387,6 +393,7 @@ def simulate_hebbian_episode(abcd_rules, seed=None, n_agents=None, wind_enabled=
     proximity_penalty = 0.0  # tracked but unweighted by default; see _proximity_penalty
     post_gate_cohesion_dist = (post_gate_cohesion_sum / post_gate_steps) if post_gate_steps else None
     excess_crossings = float(np.sum(np.maximum(crossing_count - 1, 0))) if crossing_success else 0.0
+    gates_cleared = int(np.min(next_gate_idx)) if crossing_success else 0
 
     telemetry = None
     if record_trajectory or record_battery:
@@ -403,7 +410,7 @@ def simulate_hebbian_episode(abcd_rules, seed=None, n_agents=None, wind_enabled=
         proximity_penalty=proximity_penalty, path_alignment=path_alignment,
         path_deviation_m=path_deviation_m, mean_speed=mean_speed, stopped_time=stopped_time,
         success=float(success), post_gate_cohesion_dist=post_gate_cohesion_dist,
-        excess_crossings=excess_crossings, telemetry=telemetry)
+        excess_crossings=excess_crossings, gates_cleared=gates_cleared, telemetry=telemetry)
 
 
 def stage_fitness(result: EpisodeResult, stage: str) -> float:
@@ -421,6 +428,7 @@ def stage_fitness(result: EpisodeResult, stage: str) -> float:
           - excess_crossings / excess_crossings_w
           - post_gate_cohesion_dist / post_gate_cohesion_w [if the swarm ever got past the last gate]
           + success_bonus [if success]
+          + gates_cleared * partial_gate_bonus [multi-gate sequence stages only]
 
     distance_w defaults to config.HEBBIAN_EFF_DISTANCE_WEIGHT (16.0, the value
     calibrated for the energy-efficiency curriculum) but every gate-curriculum
@@ -484,5 +492,9 @@ def stage_fitness(result: EpisodeResult, stage: str) -> float:
     success_bonus = weights.get("success_bonus")
     if success_bonus is not None and result.success:
         eff += success_bonus
+
+    partial_gate_bonus = weights.get("partial_gate_bonus")
+    if partial_gate_bonus is not None:
+        eff += result.gates_cleared * partial_gate_bonus
 
     return eff

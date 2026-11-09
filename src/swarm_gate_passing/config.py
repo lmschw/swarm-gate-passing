@@ -284,6 +284,23 @@ GATE_SUCCESS_BONUS = 100.0          # eff += this iff EVERY agent crossed the fi
                                      # 4/15 at 100). A much larger bonus (100, not 30) is meant to tilt
                                      # that balance more decisively even while it stays sparse.
 
+# eff += result.gates_cleared * this, where gates_cleared is how many gates in the
+# REQUIRED SEQUENCE every agent has cleared (see simulate_hebbian_episode's
+# crossing_success/next_gate_idx) -- e.g. for 2 sequential gates, clearing just
+# gate 1 (not yet gate 2) already earns one unit of this. Only used by stages that
+# set "partial_gate_bonus" in HEBBIAN_STAGE_FITNESS_WEIGHTS (currently
+# vision_gate_curriculum_partial); single-gate stages never see it change their
+# behavior since gates_cleared can only be 0 or 1 there, and 1 already implies
+# result.success (which gets the much larger GATE_SUCCESS_BONUS instead).
+# Needed because an all-or-nothing bonus over a 2-gate sequence spread across the
+# full arena is too rare to ever surface in training (0/15 post-hoc across 3
+# seeds with curriculum alone, ANTS26 gate-passing 2-gate experiment, 2026-09) --
+# CMA-ES never sees a single success to select on. A smaller, denser reward for
+# clearing just the first gate gives it something achievable to climb toward
+# before attempting the full sequence. Set well below GATE_SUCCESS_BONUS so
+# finishing the whole sequence still dominates.
+GATE_PARTIAL_CROSSING_BONUS = 25.0
+
 # The finish line ("success") sits this far past the LAST gate, not at it -- a gate can
 # physically scatter the swarm as individuals squeeze through separately, so requiring
 # them to keep moving together for a bit further is what actually tests (and rewards)
@@ -390,9 +407,11 @@ GATE_CURRICULUM_RAMP_FRACTION = 0.7   # difficulty reaches 1.0 (full random boun
 ENERGY_STAGES = ("walk_left", "save_battery_avoid_wall", "save_battery_avoid_all", "follow_gradient_path")
 GATE_STAGES = ("flock_cohesion", "flock_gradient", "flock_gate", "flock_gate_speed")
 GATE_ENABLED_STAGES = ("flock_gate", "flock_gate_speed")
-VISION_STAGES = ("vision_flock", "vision_gate", "vision_gate_directed", "vision_gate_curriculum")
-VISION_GATE_ENABLED_STAGES = ("vision_gate", "vision_gate_directed", "vision_gate_curriculum")
-GATE_CURRICULUM_STAGES = ("vision_gate_curriculum",)
+VISION_STAGES = ("vision_flock", "vision_gate", "vision_gate_directed", "vision_gate_curriculum",
+                  "vision_gate_curriculum_partial")
+VISION_GATE_ENABLED_STAGES = ("vision_gate", "vision_gate_directed", "vision_gate_curriculum",
+                               "vision_gate_curriculum_partial")
+GATE_CURRICULUM_STAGES = ("vision_gate_curriculum", "vision_gate_curriculum_partial")
 HEBBIAN_STAGES = ENERGY_STAGES + GATE_STAGES + VISION_STAGES
 HEBBIAN_STAGE_WIND_ENABLED = {
     "walk_left": False,
@@ -407,6 +426,7 @@ HEBBIAN_STAGE_WIND_ENABLED = {
     "vision_gate": GATE_WIND_ENABLED,
     "vision_gate_directed": GATE_WIND_ENABLED,
     "vision_gate_curriculum": GATE_WIND_ENABLED,
+    "vision_gate_curriculum_partial": GATE_WIND_ENABLED,
 }
 # Per-stage fitness weights, all optional (a missing/None key means that term is
 # entirely absent, and distance_w explicitly set to 0.0 means "off" too, since it's
@@ -513,6 +533,21 @@ HEBBIAN_STAGE_FITNESS_WEIGHTS = {
         "stopped_w": GATE_STOPPED_TIME_WEIGHT,
         "success_bonus": GATE_SUCCESS_BONUS,
         "excess_crossings_w": GATE_EXCESS_CROSSING_WEIGHT,
+    },
+    # Same as "vision_gate_curriculum" plus partial_gate_bonus -- for a multi-gate
+    # SEQUENCE (n_gates > 1), the all-or-nothing success_bonus alone was too rare to
+    # ever surface during training (see GATE_PARTIAL_CROSSING_BONUS above). Harmless
+    # for n_gates=1 (gates_cleared is then always 0 or 1, and 1 implies success anyway).
+    "vision_gate_curriculum_partial": {
+        "distance_w": 0.0,
+        "collision_w": GATE_COLLISION_WEIGHT, "wall_col_mult": GATE_WALL_COL_MULT,
+        "include_inter_robot_collision": True,
+        "cohesion_w": GATE_COHESION_WEIGHT,
+        "speed_w": GATE_SPEED_WEIGHT,
+        "stopped_w": GATE_STOPPED_TIME_WEIGHT,
+        "success_bonus": GATE_SUCCESS_BONUS,
+        "excess_crossings_w": GATE_EXCESS_CROSSING_WEIGHT,
+        "partial_gate_bonus": GATE_PARTIAL_CROSSING_BONUS,
     },
 }
 
