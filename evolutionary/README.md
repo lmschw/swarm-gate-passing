@@ -29,6 +29,8 @@ see `config.HEBBIAN_STAGE_FITNESS_WEIGHTS` and `simulation.stage_fitness`.
 
 ## Install
 
+All commands below are run from this `evolutionary/` directory.
+
 ```sh
 pip install -e ".[dev]"
 ```
