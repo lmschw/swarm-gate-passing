@@ -23,8 +23,10 @@ $$\mathbf{f}_i = \alpha\,\mathbf{p}_i + \beta\,\mathbf{h}_i + G\,\gamma_i\,\math
   $F(d) = -\varepsilon\,(2\sigma_i^4/d^5 - \sigma_i^2/d^3)$. The equilibrium spacing is
   $d_\text{des} = \sqrt2\,\sigma_i$: neighbours attract beyond it and repel inside it.
   Leaders use a smaller $\sigma$ (0.6 instead of 0.7).
-- **Heading alignment:** $\mathbf{h}_i$ is the sum of all agents' heading unit vectors,
-  rotated into $i$'s frame. It is global and unnormalised, as in the reference.
+- **Heading alignment:** $\mathbf{h}_i$ is the unnormalised sum of the heading unit
+  vectors of $i$ and its neighbours in $\mathcal{N}_i$, rotated into $i$'s frame.
+  `local_alignment=False` (`--global-alignment` on the command line) sums over
+  all agents instead, as the reference does.
 - **Goal direction:** $\mathbf{g}_i = [\cos(\psi_i-\theta_i), \sin(\psi_i-\theta_i)]$, where
   $\psi_i$ is the leader's goal heading. $\gamma_i = 1$ for leaders and 0 for followers.
 
@@ -80,6 +82,7 @@ python -m emergent_leaders.run --walk levy --duration 500 --live          # inte
 python -m emergent_leaders.run --walk correlated --seed 0 \
     --video run.mp4 --summary run.png                                    # MP4 replay + summary figure
 python -m emergent_leaders.run --goal-heading 45 --summary goal45.png    # fixed goal direction
+python -m emergent_leaders.run --global-alignment --live                 # reference's global alignment
 ```
 
 From Python:
@@ -96,9 +99,16 @@ render_video(history, "run.mp4")
 
 ## Differences from the reference code
 
-The dynamics are the same. Over 1000 s with 25 agents, both implementations
-average about 12–13 leaders, keep a swarm radius of about 3 m and reach a mean
-stability of about 0.81. A few details differ:
+By default, heading alignment only uses neighbours within `sense_range`. The
+reference aligns with the whole swarm, which `local_alignment=False` restores.
+With local alignment, the swarm often splits under the random-walk goals: in
+about 4–5 of 10 Lévy or Brownian runs of 600 s, and in 1 of 10 correlated runs.
+It stays together under a fixed goal heading.
+
+With global alignment the dynamics match the reference. Over 1000 s with 25
+agents, both implementations average about 12–13 leaders, keep a swarm radius
+of about 3 m and reach a mean stability of about 0.81. A few other details
+differ:
 
 - `n_agents` is the total number of agents. The reference's argument was the
   side length of the square starting grid.

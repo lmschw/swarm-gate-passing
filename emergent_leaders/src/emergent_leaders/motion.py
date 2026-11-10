@@ -9,8 +9,9 @@ force is expressed in agent i's body frame (x forward, y left):
           F(d_ij) * [cos(phi_ij), sin(phi_ij)],
           F(d) = -epsilon * (2 sigma_i^4 / d^5 - sigma_i^2 / d^3)
           (attractive for d > sqrt(2) sigma_i, repulsive below)
-    h_i   heading alignment: the (unnormalised) sum of all agents' heading
-          vectors, rotated into i's frame
+    h_i   heading alignment: the (unnormalised) sum of the heading vectors of
+          i and its sensed neighbours (or of all agents, if
+          local_alignment is off), rotated into i's frame
     g_i   goal direction: unit vector towards the goal heading psi_i
     gamma_i  1 for leaders, 0 for followers
 
@@ -50,8 +51,13 @@ def proximal_control(dist, bearing, sigma, epsilon):
     return np.sum(magnitude * np.cos(bearing), axis=1), np.sum(magnitude * np.sin(bearing), axis=1)
 
 
-def heading_alignment(heading):
-    total = np.sum(np.exp(1j * heading))
+def heading_alignment(heading, sensed=None):
+    """sensed: (n, n) bool mask of the agents each agent aligns with (itself is
+    always included); None aligns every agent with the whole swarm."""
+    if sensed is None:
+        total = np.sum(np.exp(1j * heading))
+    else:
+        total = (sensed | np.eye(len(heading), dtype=bool)) @ np.exp(1j * heading)
     local = total * np.exp(-1j * heading)
     return local.real, local.imag
 
@@ -66,7 +72,7 @@ def virtual_force(pos, heading, is_leader, goal_heading, params, geometry=None):
     dist, bearing = geometry if geometry is not None else neighbour_geometry(pos, heading, params.sense_range)
     sigma = np.where(is_leader, params.sigma_leader, params.sigma)
     p_x, p_y = proximal_control(dist, bearing, sigma, params.epsilon)
-    h_x, h_y = heading_alignment(heading)
+    h_x, h_y = heading_alignment(heading, np.isfinite(dist) if params.local_alignment else None)
     g_x, g_y = goal_attraction(heading, goal_heading)
     gamma = is_leader.astype(float)
     f_x = params.alpha * p_x + params.beta * h_x + params.goal_gain * gamma * g_x

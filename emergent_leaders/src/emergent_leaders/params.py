@@ -20,6 +20,9 @@ class ModelParams:
     alpha: float = 2.0             # proximal control
     beta: float = 0.5              # heading alignment
     goal_gain: float = 4.0         # goal direction (applied to leaders only)
+    # Align with neighbours within sense_range; False aligns with the whole
+    # swarm, as the reference does.
+    local_alignment: bool = True
 
     # --- Unicycle motion ---
     k1: float = 0.6                # linear gain:  u = k1 * f_x + u_c

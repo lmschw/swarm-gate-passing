@@ -50,6 +50,22 @@ def test_heading_alignment_is_unnormalised_sum_in_body_frame():
     assert h_y[3] < 0 < h_y[0]   # the odd one out turns right, the others turn left towards it
 
 
+@pytest.mark.parametrize("local, turns", [(True, False), (False, True)])
+def test_local_alignment_ignores_agents_beyond_sense_range(local, turns):
+    pos = np.array([[0.0, 0.0], [10.0, 0.0]])
+    heading = np.array([0.0, np.pi / 2])
+    params = ModelParams(local_alignment=local)
+    _, f_y = motion.virtual_force(pos, heading, np.zeros(2, dtype=bool), np.zeros(2), params)
+    assert (f_y[0] > 1e-9) == turns   # agent 0 turns towards agent 1's heading only when aligning globally
+
+
+def test_local_alignment_includes_sensed_neighbours():
+    pos = np.array([[0.0, 0.0], [1.0, 0.0]])
+    heading = np.array([0.0, np.pi / 2])
+    _, f_y = motion.virtual_force(pos, heading, np.zeros(2, dtype=bool), np.zeros(2), P)
+    assert f_y[0] > 0 > f_y[1]
+
+
 def test_goal_term_only_drives_leaders():
     pos = np.array([[0.0, 0.0], [10.0, 0.0]])  # out of range: only alignment + goal act
     heading = np.zeros(2)

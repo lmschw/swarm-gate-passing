@@ -20,6 +20,8 @@ def main(argv=None):
     parser.add_argument("--goal-heading", type=float, default=None,
                         help="use one fixed global goal heading [deg] instead of a random walk")
     parser.add_argument("--leader-type", choices=["free", "inner", "outer"], default="free")
+    parser.add_argument("--global-alignment", action="store_true",
+                        help="align with the whole swarm (reference) instead of neighbours within sense range")
     parser.add_argument("--seed", type=int, default=None)
     parser.add_argument("--record-every", type=int, default=10, help="record every k-th step")
     parser.add_argument("--live", action="store_true", help="draw the run in a window")
@@ -33,11 +35,13 @@ def main(argv=None):
     if not args.live:
         matplotlib.use("Agg")
     from .goals import FixedGoal, RandomWalkGoal
+    from .params import ModelParams
     from .simulation import Simulation
     from . import visualize
 
-    goal = FixedGoal(math.radians(args.goal_heading)) if args.goal_heading is not None else RandomWalkGoal(args.walk)
-    sim = Simulation(args.n_agents, goal=goal, leader_type=args.leader_type, seed=args.seed)
+    params = ModelParams(local_alignment=not args.global_alignment)
+    goal =FixedGoal(math.radians(args.goal_heading)) if args.goal_heading is not None else RandomWalkGoal(args.walk)
+    sim = Simulation(args.n_agents, params=params, goal=goal, leader_type=args.leader_type, seed=args.seed)
     n_steps = round(args.duration / sim.params.dt)
     callback = (visualize.live_callback(sim, n_steps, args.record_every, follow=not args.fixed_view)
                 if args.live else None)
