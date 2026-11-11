@@ -22,7 +22,7 @@ class ModelParams:
     goal_gain: float = 4.0         # goal direction (applied to leaders only)
     # Align with neighbours within sense_range; False aligns with the whole
     # swarm, as the reference does.
-    local_alignment: bool = True
+    local_alignment: bool = False
 
     # --- Unicycle motion ---
     k1: float = 0.6                # linear gain:  u = k1 * f_x + u_c
@@ -40,6 +40,20 @@ class ModelParams:
     k_prom: float = 100.0          # steepness
     p_prom_max: float = 0.05       # saturation probability
     b_prom: float = 0.91           # stability at which P reaches ~p_prom_max / (1 + p_prom_max)
+
+    # --- Gates (see gates.py) ---
+    gate_sense_range: float = 4.0             # gate posts within this distance are sensed perfectly
+    gate_front_half_angle: float = math.pi / 2  # a target counts as in front within this angle of the heading
+    post_radius: float = 0.15                 # posts are solid discs; agents are points
+    # Course design: how far past a gate the front of the swarm reaches while
+    # agents are still crossing it (3.5-4.3 m for 25 agents). The next gate
+    # must be in sensing range of that stretch.
+    gate_lookahead: float = 3.5
+    # Pause exploration while any agent has a gate target: explorers step down
+    # and no follower is promoted to explorer. The pause lasts another
+    # exploration_hold_off seconds after the last gate target is lost.
+    pause_exploration_at_gates: bool = False
+    exploration_hold_off: float = 0.0
 
     # --- Leader tenure ---
     # The reference demotes once an agent has drawn 5 goal samples; the 5th is
