@@ -125,6 +125,12 @@ refuses a course unless:
 Pass `check_course=False` (`--no-course-check`) to run a course that breaks
 these rules.
 
+`Simulation.perceive_gates()` returns what each agent aims for; subclasses
+override it to replace the perfect sensing (as
+[`vision_leaders`](../vision_leaders/) does with cameras).
+`gate_targets(..., visible=mask)` applies the rule to only the posts a mask
+marks as visible.
+
 `Simulation.next_gate_in_view()` reports, for each gate, whether some agent
 did aim at the next gate before the last agent was through.
 

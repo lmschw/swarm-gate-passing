@@ -107,6 +107,15 @@ def test_agents_aim_at_the_centre_or_the_only_sensed_post_if_in_front(pos, headi
         np.testing.assert_allclose(aim[0], target)
 
 
+def test_posts_marked_invisible_are_not_sensed():
+    pos, heading = np.array([[7.0, 0.0]]), np.zeros(1)
+    one_post = np.array([[[True, False]]])
+    g, n, aim = gates.gate_targets(pos, heading, [GATE], P, visible=one_post)
+    assert (g[0], n[0]) == (0, 1)
+    np.testing.assert_allclose(aim[0], GATE.posts[0])
+    assert gates.gate_targets(pos, heading, [GATE], P, visible=np.zeros((1, 1, 2), bool))[0][0] == -1
+
+
 def test_agents_are_pushed_out_of_posts():
     post = GATE.posts[1]
     pos = np.array([post + [0.05, 0.0], post, post + [1.0, 0.0]])

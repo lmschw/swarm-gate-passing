@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "vision-leaders"
+version = "0.1.0"
+description = "Gate perception from low-resolution agent cameras, on the emergent-leaders motion model"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "emergent-leaders",   # install from ../emergent_leaders
+    "numpy>=1.24",
+    "torch>=2.0",
+    "matplotlib>=3.7",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.4"]
+
+[tool.setuptools.packages.find]
+where = ["src"]

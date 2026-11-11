@@ -168,7 +168,7 @@ class Simulation:
             return 0, 0
         s = self.state
         had_target = s.gate_target >= 0
-        s.gate_target, s.posts_seen, target = gates_mod.gate_targets(s.pos, s.heading, self.gates, self.params)
+        s.gate_target, s.posts_seen, target = self.perceive_gates()
         sees = s.gate_target >= 0
         lost = had_target & ~sees
         promoted = sees & ~s.is_leader
@@ -182,6 +182,12 @@ class Simulation:
         first[first] = np.isin(np.flatnonzero(first), s.gate_target)
         self.gate_first_target_time[first] = self.step_count * self.params.dt
         return int(promoted.sum()), int(lost.sum())
+
+    def perceive_gates(self):
+        """What each agent aims for, as gates.gate_targets returns it. Override
+        to replace the perfect sensing within gate_sense_range."""
+        s = self.state
+        return gates_mod.gate_targets(s.pos, s.heading, self.gates, self.params)
 
     def step(self):
         """Advance one time step; returns (n_promoted, n_demoted)."""

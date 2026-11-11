@@ -102,14 +102,20 @@ def _in_front(pos, heading, target, half_angle):
     return np.abs((bearing + np.pi) % (2.0 * np.pi) - np.pi) <= half_angle
 
 
-def gate_targets(pos, heading, gates, params):
+def gate_targets(pos, heading, gates, params, visible=None):
     """What each agent aims for: (gate index or -1, posts sensed of that gate
-    (0 if none), target point (nan if none))."""
+    (0 if none), target point (nan if none)).
+
+    visible, if given, is an (n, n_gates, 2) bool array; posts not visible to
+    an agent (e.g. occluded or outside a camera's view) are not sensed even in
+    range."""
     n = len(heading)
     gate_idx, posts_seen, target = np.full(n, -1), np.zeros(n, dtype=int), np.full((n, 2), np.nan)
     for g, gate in enumerate(gates):
         posts = gate.posts
         sensed = np.linalg.norm(pos[:, None, :] - posts[None, :, :], axis=2) <= params.gate_sense_range
+        if visible is not None:
+            sensed &= visible[:, g]
         aim = np.where(sensed[:, [0]], posts[0], posts[1])
         aim[sensed.all(axis=1)] = gate.centre
         aims = sensed.any(axis=1) & _in_front(pos, heading, aim, params.gate_front_half_angle)
