@@ -115,6 +115,27 @@ or 1 and both weightings act alike. It was trained on hard labels (would the
 rule lead or not), so q estimates that probability; it says nothing about
 how reliable the predicted bearing is.
 
+A graded pull doesn't help even with the rule's perfect sensing. Gate
+leaders were weighted by distance to the target (γ = 1 − d / 4 m), by a fade
+over the outer half of the sensing range (full within 2 m of the nearest
+post, 0 at 4 m), or by posts seen (0.5 for a lone post), with the goal gain
+G either unchanged or raised so the mean pull matches the binary rule
+(runs with > 50% through all gates, slalom / winding):
+
+| goal weight of gate leaders | G = 4 | G raised to match the mean pull |
+|---|---|---|
+| 1 (binary, as now) | 10 / 10, 5 / 20 | – |
+| 1 − d / 4 m (mean 0.41) | 4 / 10, 0 / 20 | 5 / 10, 2 / 20 (G 9.8) |
+| fade over 2–4 m (mean 0.70) | 5 / 10, 0 / 20 | 4 / 10, 1 / 20 (G 5.8) |
+| 0.5 for a lone post (mean 0.75) | 8 / 10, 2 / 20 | 9 / 10, 2 / 20 (G 5.3) |
+
+A weaker binary pull keeps the slalom (G 1.6: 10 / 10; G 2.8: 9 / 10) but
+loses winding runs (1 / 20 and 3 / 20). So down-weighting the first, far
+sightings of a gate is what hurts: the swarm starts turning late, and a
+stronger pull close to the gate doesn't make up for it. A confidence that
+grows as the gate approaches (e.g. soft labels by distance) would do the
+same.
+
 Videos (agent 14's camera below the arena; network leaders are drawn as
 gate-centre leaders, since the network doesn't say how many posts it sees):
 
