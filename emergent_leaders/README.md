@@ -133,6 +133,8 @@ marks as visible.
 `Simulation.goal_terms()` returns each agent's goal weight γ and goal
 heading for the force; subclasses override it to weight the goal term
 continuously (`virtual_force(..., goal_weight=...)`).
+`Simulation.spacing()` returns each agent's σ; subclasses override it to
+change the desired distances (`virtual_force(..., sigma=...)`).
 
 `Simulation.next_gate_in_view()` reports, for each gate, whether some agent
 did aim at the next gate before the last agent was through.
@@ -310,6 +312,45 @@ Findings:
   right after gate 1. In one run the swarm missed gate 2 but went through
   gates 3–5. With 10 runs, these differences are within noise. Paused
   explorers give the same result as none at 7 m.
+- **Why agents miss gates** (rule, explorers off; 92 of 750 agent-passages
+  missed on the default slalom, 200 of 1400 on the 7 m winding courses, at
+  gates most of the swarm passed): every agent that missed a gate had aimed
+  at it itself. The misses are edge agents (86% on the slalom were in the
+  outer 40% of the swarm as it crossed). About a third were caught on a post
+  (37% slalom, 32% winding); most others crossed the gate line just outside
+  a post (on the slalom mostly on the side towards the next gate, or at the
+  last gate); only 2–3% never reached the line. The swarm moves as one
+  block: while aiming at a gate, agents' headings stay within 2.5–3.6° of the
+  swarm's on average (median maximum 7–12°), although their targets are
+  26–29° off their headings. Global alignment (up to β·25 ≈ 12.5) outweighs
+  the goal pull (G = 4), which by itself would allow at most
+  asin(4/12.5) ≈ 19°. The block is wider (4.15 m) than the clear opening
+  between the posts (4 m − 2 × 0.15 m = 3.7 m), and its centre crosses a
+  median 0.4 m off the gate centre, so its edges hit or miss the posts.
+- **Tighter spacing at gates** doesn't get more of the swarm through. The rule
+  drives (perfect sensing, explorers off), σ = 0.7 elsewhere; runs with most
+  of the swarm through all gates, default slalom / five-gate winding at 7 m:
+
+  | smaller σ for | σ 0.6 | σ 0.5 |
+  |---|---|---|
+  | nobody (baseline) | 10 / 10, 5 / 20 | |
+  | agents with a gate target | 1 / 10, 0 / 20 | 0 / 10, 0 / 20 |
+  | agents with any post in range | 2 / 10, 0 / 20 | 0 / 10, 0 / 20 |
+  | everyone, while any agent has a gate target | 3 / 10, 2 / 20 | 5 / 10, 2 / 20 |
+  | everyone, from first sighting until the first agent passes | 9 / 10, 2 / 20 | 4 / 10, 1 / 20 |
+  | everyone, until half the swarm has passed | 7 / 10, 2 / 20 | 0 / 10, 0 / 20 |
+
+  Giving some agents a smaller σ than their neighbours makes the interaction
+  non-reciprocal: the squeezed agent is attracted to a neighbour that is
+  repelled by it, and the pair drives itself sideways. At σ 0.5 almost no
+  agent reaches gate 1. This is also why the reference's tighter leader
+  spacing (`sigma_leader` = 0.6) fails at gates. Squeezing everyone at once
+  narrows the swarm (3.1 m instead of 4.2 m wide at σ 0.5) and gets 98% through
+  gate 1, but also shortens it (3.6 m instead of 4.4 m long), so its front
+  falls short of the course's 3.5 m lookahead: the next gate was in view in
+  15 of 20 passages instead of 20 of 20, and half the runs never reached
+  gate 3. Releasing the squeeze during a passage makes the swarm swing as it
+  expands, like the swing after gate leaders are demoted.
 - **Random start:** with random headings, 8 of 10 runs still get most of the
   swarm through, even without explorers, because gate 1 is only 4–8 m from the
   start. This setup doesn't test finding a gate that is far away or behind.

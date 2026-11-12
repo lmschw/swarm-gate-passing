@@ -67,12 +67,14 @@ def goal_attraction(heading, goal_heading):
     return np.cos(rel), np.sin(rel)
 
 
-def virtual_force(pos, heading, is_leader, goal_heading, params, geometry=None, goal_weight=None):
+def virtual_force(pos, heading, is_leader, goal_heading, params, geometry=None, goal_weight=None, sigma=None):
     """Returns (f_x, f_y) in each agent's body frame. goal_weight, if given,
     replaces gamma_i (leaders 1, followers 0) as the weight of the goal term;
-    is_leader still sets the spacing parameter."""
+    sigma, if given, replaces the spacing parameters (sigma_leader for
+    leaders, sigma for followers)."""
     dist, bearing = geometry if geometry is not None else neighbour_geometry(pos, heading, params.sense_range)
-    sigma = np.where(is_leader, params.sigma_leader, params.sigma)
+    if sigma is None:
+        sigma = np.where(is_leader, params.sigma_leader, params.sigma)
     p_x, p_y = proximal_control(dist, bearing, sigma, params.epsilon)
     h_x, h_y = heading_alignment(heading, np.isfinite(dist) if params.local_alignment else None)
     g_x, g_y = goal_attraction(heading, goal_heading)

@@ -195,13 +195,18 @@ class Simulation:
         Override to weight the goal direction continuously."""
         return self.state.is_leader.astype(float), self.state.goal_heading
 
+    def spacing(self):
+        """Per-agent spacing parameter sigma (desired distance sqrt(2) sigma):
+        sigma_leader for leaders, sigma for followers. Override to change it."""
+        return np.where(self.state.is_leader, self.params.sigma_leader, self.params.sigma)
+
     def step(self):
         """Advance one time step; returns (n_promoted, n_demoted)."""
         s, p = self.state, self.params
 
         goal_weight, goal_heading = self.goal_terms()
         f_x, f_y = motion.virtual_force(s.pos, s.heading, s.is_leader, goal_heading, p, self._geometry(),
-                                        goal_weight=goal_weight)
+                                        goal_weight=goal_weight, sigma=self.spacing())
         u, w = motion.velocity_commands(f_x, f_y, p)
         prev_pos = s.pos
         s.pos, s.heading = motion.integrate(s.pos, s.heading, u, w, p.dt)
