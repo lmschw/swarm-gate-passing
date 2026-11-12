@@ -42,12 +42,16 @@ def neighbour_geometry(pos, heading, sense_range):
     return dist, bearing
 
 
-def proximal_control(dist, bearing, sigma, epsilon):
-    """sigma: per-agent spacing parameter, shape (n,)."""
+def proximal_control(dist, bearing, sigma, epsilon, attraction=None):
+    """sigma: per-agent spacing parameter, shape (n,). attraction: optional
+    per-agent factor on the attractive part of the force (0 keeps only the
+    repulsion), shape (n,)."""
     s = sigma[:, None]
     with np.errstate(divide="ignore", invalid="ignore"):
         magnitude = -epsilon * (2.0 * s**4 / dist**5 - s**2 / dist**3)
     magnitude[~np.isfinite(dist)] = 0.0
+    if attraction is not None:
+        magnitude = np.where(magnitude > 0, attraction[:, None] * magnitude, magnitude)
     return np.sum(magnitude * np.cos(bearing), axis=1), np.sum(magnitude * np.sin(bearing), axis=1)
 
 
@@ -67,16 +71,22 @@ def goal_attraction(heading, goal_heading):
     return np.cos(rel), np.sin(rel)
 
 
-def virtual_force(pos, heading, is_leader, goal_heading, params, geometry=None, goal_weight=None, sigma=None):
+def virtual_force(pos, heading, is_leader, goal_heading, params, geometry=None, goal_weight=None, sigma=None,
+                  align_with=None, attraction=None):
     """Returns (f_x, f_y) in each agent's body frame. goal_weight, if given,
     replaces gamma_i (leaders 1, followers 0) as the weight of the goal term;
     sigma, if given, replaces the spacing parameters (sigma_leader for
-    leaders, sigma for followers)."""
+    leaders, sigma for followers); align_with, if given, is the (n, n) bool
+    mask of the agents each agent aligns with and replaces the
+    local_alignment rule; attraction, if given, scales each agent's
+    attraction to its neighbours (see proximal_control)."""
     dist, bearing = geometry if geometry is not None else neighbour_geometry(pos, heading, params.sense_range)
     if sigma is None:
         sigma = np.where(is_leader, params.sigma_leader, params.sigma)
-    p_x, p_y = proximal_control(dist, bearing, sigma, params.epsilon)
-    h_x, h_y = heading_alignment(heading, np.isfinite(dist) if params.local_alignment else None)
+    p_x, p_y = proximal_control(dist, bearing, sigma, params.epsilon, attraction)
+    if align_with is None and params.local_alignment:
+        align_with = np.isfinite(dist)
+    h_x, h_y = heading_alignment(heading, align_with)
     g_x, g_y = goal_attraction(heading, goal_heading)
     gamma = is_leader.astype(float) if goal_weight is None else goal_weight
     f_x = params.alpha * p_x + params.beta * h_x + params.goal_gain * gamma * g_x

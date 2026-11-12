@@ -200,13 +200,26 @@ class Simulation:
         sigma_leader for leaders, sigma for followers. Override to change it."""
         return np.where(self.state.is_leader, self.params.sigma_leader, self.params.sigma)
 
+    def alignment(self, geometry):
+        """(n, n) bool mask of the agents each agent aligns its heading with,
+        or None for the params' rule (whole swarm, or sensed neighbours with
+        local_alignment). Override to change it."""
+        return None
+
+    def attraction(self):
+        """Per-agent factor on the attraction to neighbours (0 keeps only the
+        repulsion), or None for full attraction. Override to change it."""
+        return None
+
     def step(self):
         """Advance one time step; returns (n_promoted, n_demoted)."""
         s, p = self.state, self.params
 
         goal_weight, goal_heading = self.goal_terms()
-        f_x, f_y = motion.virtual_force(s.pos, s.heading, s.is_leader, goal_heading, p, self._geometry(),
-                                        goal_weight=goal_weight, sigma=self.spacing())
+        geometry = self._geometry()
+        f_x, f_y = motion.virtual_force(s.pos, s.heading, s.is_leader, goal_heading, p, geometry,
+                                        goal_weight=goal_weight, sigma=self.spacing(),
+                                        align_with=self.alignment(geometry), attraction=self.attraction())
         u, w = motion.velocity_commands(f_x, f_y, p)
         prev_pos = s.pos
         s.pos, s.heading = motion.integrate(s.pos, s.heading, u, w, p.dt)

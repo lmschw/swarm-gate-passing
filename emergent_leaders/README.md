@@ -135,6 +135,13 @@ heading for the force; subclasses override it to weight the goal term
 continuously (`virtual_force(..., goal_weight=...)`).
 `Simulation.spacing()` returns each agent's σ; subclasses override it to
 change the desired distances (`virtual_force(..., sigma=...)`).
+`Simulation.alignment(geometry)` returns the (n, n) mask of whom each agent
+aligns its heading with, or None for the default (the whole swarm);
+subclasses override it to change the alignment partners
+(`virtual_force(..., align_with=...)`).
+`Simulation.attraction()` returns a per-agent factor on the attraction to
+neighbours (0 keeps only the repulsion), or None for full attraction
+(`virtual_force(..., attraction=...)`).
 
 `Simulation.next_gate_in_view()` reports, for each gate, whether some agent
 did aim at the next gate before the last agent was through.
@@ -327,6 +334,48 @@ Findings:
   asin(4/12.5) ≈ 19°. The block is wider (4.15 m) than the clear opening
   between the posts (4 m − 2 × 0.15 m = 3.7 m), and its centre crosses a
   median 0.4 m off the gate centre, so its edges hit or miss the posts.
+- **Breaking formation near posts** doesn't help either. Agents within r of
+  their nearest post stop aligning (k = 0) or align only with their k nearest
+  neighbours; rule, explorers off, runs with most of the swarm through all
+  gates, default slalom / five-gate winding at 7 m (baseline 10 / 10, 5 / 20):
+
+  | r | k = 0 | k = 1 | k = 2 |
+  |---|---|---|---|
+  | 0.75 m | 9 / 10, 3 / 20 | 8 / 10, 3 / 20 | 9 / 10, 4 / 20 |
+  | 1.5 m | 7 / 10, 3 / 20 | 7 / 10, 5 / 20 | 7 / 10, 4 / 20 |
+  | 2.5 m | 9 / 10, 2 / 20 | 9 / 10, 2 / 20 | 9 / 10, 5 / 20 |
+
+  Gate 1 moves by at most two points (92% → 89–94%). Without alignment the
+  spacing forces hold the block together: for near-post agents with a gate
+  target (r 1.5 m, k 0, slalom) the lateral spacing force (median 2.7) is
+  about as strong as the goal pull (2.9) and opposes it 84% of the time, so
+  headings still stay a median 5° off the swarm's although targets are 47°
+  off. Near the desired distance the spacing force stiffens by
+  α·ε/(2σ²) ≈ 30 per metre per neighbour, so a goal pull of 4 shifts an agent
+  only about 0.1 m against its neighbours. Half of the near-post agents have
+  no gate target (the post is already beside or behind them) and, without
+  alignment, drift (median 7° off the swarm's heading).
+
+  Dropping the attraction as well (repulsion kept) makes it worse. Same
+  runs; near-post agents stop aligning and drop the attraction, either only
+  those with a gate target or all of them:
+
+  | r | with a gate target | all near-post agents |
+  |---|---|---|
+  | 0.75 m | 10 / 10, 4 / 20 | 8 / 10, 3 / 20 |
+  | 1.5 m | 10 / 10, 3 / 20 | 5 / 10, 2 / 20 |
+  | 2.5 m | 4 / 10, 1 / 20 | 3 / 10, 0 / 20 |
+
+  Gate 1 falls from 92% to 78–88%; with r 2.5 m agents get separated from
+  the swarm (on average 2–19 by the end). Dropping only the attraction
+  (alignment kept, r 1.5 m, gate-target agents) gives 10 / 10, 4 / 20 but
+  also 82% at gate 1. The swarm is crowded at a gate, and its spacing force
+  pushes edge agents out, not in: for agents within 1.5 m of a post that
+  aim at the gate (slalom), the component along the gate line points away
+  from the gate centre 75% of the time (median 2.3 outward) at baseline and
+  89% (2.8) with repulsion only. The goal pull (median 3.5 inward) is matched
+  at baseline by alignment adding 2.5 inward, since the swarm as a whole is
+  turning into the gate; breaking alignment removes that help.
 - **Tighter spacing at gates** doesn't get more of the swarm through. The rule
   drives (perfect sensing, explorers off), σ = 0.7 elsewhere; runs with most
   of the swarm through all gates, default slalom / five-gate winding at 7 m:
