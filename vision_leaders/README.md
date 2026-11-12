@@ -58,6 +58,11 @@ target" and the bearing as (sin, cos), relative to the heading, positive to
 the left. A fourth input channel holds each column's bearing. An agent leads
 when the probability reaches 0.5 and then aims along the predicted bearing.
 
+With `goal_weighting="confidence"` (`--goal-weighting confidence`), the
+probability q itself weights the goal term instead: every agent pulls along
+its predicted bearing with γ = q, in f = αp + βh + Gγg. Agents with q ≥ 0.5
+still count as leaders (spacing, statistics, video).
+
 ## Training (`train.py`)
 
 1. **Behaviour cloning:** the full rule drives the swarm on 40 random courses
@@ -94,6 +99,21 @@ courses both lose the swarm at sharp turns (see the `emergent_leaders`
 README), so the network isn't the limit there. The closed-loop effect of
 DAgger was not measured separately: the behaviour-cloning model of this run
 was overwritten (`train.py` now keeps each stage's model).
+
+Confidence weighting (`python -m vision_leaders.evaluate models/goalnet.pt
+--goal-weighting threshold confidence`) makes no clear difference:
+
+| suite | goal weight | through each gate | runs with > 50% through all | agent-steps with 0.05 < q < 0.95 |
+|---|---|---|---|---|
+| default slalom | 1 if q ≥ 0.5 | 90 / 91 / 71% | 10 / 10 | 8.8% |
+| | q | 91 / 91 / 76% | 10 / 10 | 8.0% |
+| winding, 7 m | 1 if q ≥ 0.5 | 91 / 61 / 40 / 28 / 24% | 4 / 20 | 5.6% |
+| | q | 91 / 58 / 39 / 23 / 15% | 3 / 20 | 6.3% |
+
+The network is unsure for only 6–9% of agent-steps, so q mostly sits near 0
+or 1 and both weightings act alike. It was trained on hard labels (would the
+rule lead or not), so q estimates that probability; it says nothing about
+how reliable the predicted bearing is.
 
 Videos (agent 14's camera below the arena; network leaders are drawn as
 gate-centre leaders, since the network doesn't say how many posts it sees):

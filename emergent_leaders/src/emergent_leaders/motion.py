@@ -13,7 +13,7 @@ force is expressed in agent i's body frame (x forward, y left):
           i and its sensed neighbours (or of all agents, if
           local_alignment is off), rotated into i's frame
     g_i   goal direction: unit vector towards the goal heading psi_i
-    gamma_i  1 for leaders, 0 for followers
+    gamma_i  1 for leaders, 0 for followers (or any weight, if goal_weight is given)
 
 The force is mapped to speed commands and integrated with forward Euler:
 
@@ -67,14 +67,16 @@ def goal_attraction(heading, goal_heading):
     return np.cos(rel), np.sin(rel)
 
 
-def virtual_force(pos, heading, is_leader, goal_heading, params, geometry=None):
-    """Returns (f_x, f_y) in each agent's body frame."""
+def virtual_force(pos, heading, is_leader, goal_heading, params, geometry=None, goal_weight=None):
+    """Returns (f_x, f_y) in each agent's body frame. goal_weight, if given,
+    replaces gamma_i (leaders 1, followers 0) as the weight of the goal term;
+    is_leader still sets the spacing parameter."""
     dist, bearing = geometry if geometry is not None else neighbour_geometry(pos, heading, params.sense_range)
     sigma = np.where(is_leader, params.sigma_leader, params.sigma)
     p_x, p_y = proximal_control(dist, bearing, sigma, params.epsilon)
     h_x, h_y = heading_alignment(heading, np.isfinite(dist) if params.local_alignment else None)
     g_x, g_y = goal_attraction(heading, goal_heading)
-    gamma = is_leader.astype(float)
+    gamma = is_leader.astype(float) if goal_weight is None else goal_weight
     f_x = params.alpha * p_x + params.beta * h_x + params.goal_gain * gamma * g_x
     f_y = params.alpha * p_y + params.beta * h_y + params.goal_gain * gamma * g_y
     return f_x, f_y

@@ -75,6 +75,14 @@ def test_goal_term_only_drives_leaders():
     assert f_y[1] == pytest.approx(0.0, abs=1e-12)
 
 
+def test_goal_weight_scales_the_goal_term_for_any_agent():
+    pos = np.array([[0.0, 0.0], [10.0, 0.0]])
+    goal = np.full(2, np.pi / 2)
+    f_x, f_y = motion.virtual_force(pos, np.zeros(2), np.array([True, False]), goal, P,
+                                    goal_weight=np.array([0.25, 0.5]))
+    np.testing.assert_allclose(f_y, [0.25 * P.goal_gain, 0.5 * P.goal_gain])
+
+
 def test_velocity_commands_are_clipped():
     u, w = motion.velocity_commands(np.array([-100.0, 0.0, 100.0]), np.array([-1e6, 0.0, 1e6]), P)
     np.testing.assert_allclose(u, [0.0, P.u_c, P.u_max])

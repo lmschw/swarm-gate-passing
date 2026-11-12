@@ -15,7 +15,7 @@ import numpy as np
 from emergent_leaders import ModelParams
 
 from .courses import course, start
-from .simulation import TEACHERS, VisionSimulation
+from .simulation import GOAL_WEIGHTINGS, TEACHERS, VisionSimulation
 
 
 def main(argv=None):
@@ -23,6 +23,8 @@ def main(argv=None):
     parser.add_argument("--model", default=None, help="trained GoalNet; without one the rule drives")
     parser.add_argument("--teacher", choices=TEACHERS, default="full",
                         help="rule used without a model, and shown beside the network")
+    parser.add_argument("--goal-weighting", choices=GOAL_WEIGHTINGS, default="threshold",
+                        help="threshold: goal pull 1 for leaders, 0 otherwise; confidence: pull = network confidence")
     parser.add_argument("--duration", type=float, default=320.0, help="simulated time [s]")
     parser.add_argument("--start-heading", type=float, default=0.0, help="[deg], +/- 30 deg")
     parser.add_argument("--sigma-leader", type=float, default=0.7)
@@ -52,6 +54,7 @@ def main(argv=None):
     kwargs = {} if net is None else {"camera": net.cam}
     sim = VisionSimulation(params=params, state=start(args.seed, heading_deg=args.start_heading), gates=gates,
                            explore=False, seed=args.seed, net=net, teacher=args.teacher, check_course=False,
+                           goal_weighting=args.goal_weighting,
                            **kwargs)
     frames = [camera_frame(sim, args.camera_agent)] if args.video else None
 
@@ -60,7 +63,8 @@ def main(argv=None):
 
     history = sim.run(round(args.duration / params.dt), record_every=args.record_every,
                       callback=record if args.video else None)
-    print(f"{'network' if net else args.teacher + ' rule'} perception, {sim.step_count * params.dt:.0f} s")
+    source = f"network ({args.goal_weighting})" if net else args.teacher + " rule"
+    print(f"{source} perception, {sim.step_count * params.dt:.0f} s")
     for g, times in enumerate(sim.gate_pass_time):
         print(f"gate {g + 1}: {int((~np.isnan(times)).sum())} / {sim.state.n} agents through")
     if args.video:

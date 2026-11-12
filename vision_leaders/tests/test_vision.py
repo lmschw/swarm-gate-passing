@@ -104,3 +104,26 @@ def test_network_leaders_aim_along_the_predicted_bearing_at_their_next_gate():
                            net=_AlwaysLeft(), check_course=False)
     assert sim.state.is_leader.all() and (sim.state.gate_target == 0).all()
     np.testing.assert_allclose(sim.state.goal_heading, [math.radians(30), 1.0 + math.radians(30)])
+
+
+class _UnsureLeft(torch.nn.Module):
+    """Stands in for GoalNet: 30% sure of a gate, 30 deg to the left."""
+    def predict(self, images):
+        return np.full(len(images), 0.3), np.full(len(images), math.radians(30))
+
+
+@pytest.mark.parametrize("weighting, weight", [("threshold", 0.0), ("confidence", 0.3)])
+def test_confidence_weighting_pulls_every_agent_by_the_network_confidence(weighting, weight):
+    state = SwarmState.from_poses(np.array([[0.0, 0.0], [10.0, 0.0]]), np.array([0.0, 1.0]))
+    sim = VisionSimulation(state=state, gates=[GATE], explore=False, net=_UnsureLeft(), goal_weighting=weighting,
+                           check_course=False)
+    assert not sim.state.is_leader.any()
+    gamma, goal = sim.goal_terms()
+    np.testing.assert_allclose(gamma, weight)
+    if weighting == "confidence":
+        np.testing.assert_allclose(goal, [math.radians(30), 1.0 + math.radians(30)])
+
+
+def test_confidence_weighting_needs_a_network():
+    with pytest.raises(ValueError):
+        VisionSimulation(gates=[GATE], explore=False, goal_weighting="confidence")

@@ -130,6 +130,9 @@ override it to replace the perfect sensing (as
 [`vision_leaders`](../vision_leaders/) does with cameras).
 `gate_targets(..., visible=mask)` applies the rule to only the posts a mask
 marks as visible.
+`Simulation.goal_terms()` returns each agent's goal weight γ and goal
+heading for the force; subclasses override it to weight the goal term
+continuously (`virtual_force(..., goal_weight=...)`).
 
 `Simulation.next_gate_in_view()` reports, for each gate, whether some agent
 did aim at the next gate before the last agent was through.

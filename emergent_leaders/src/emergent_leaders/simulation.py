@@ -189,11 +189,19 @@ class Simulation:
         s = self.state
         return gates_mod.gate_targets(s.pos, s.heading, self.gates, self.params)
 
+    def goal_terms(self):
+        """(gamma, goal heading) per agent for the goal term of the virtual
+        force: 1 for leaders and 0 for followers, with their goal headings.
+        Override to weight the goal direction continuously."""
+        return self.state.is_leader.astype(float), self.state.goal_heading
+
     def step(self):
         """Advance one time step; returns (n_promoted, n_demoted)."""
         s, p = self.state, self.params
 
-        f_x, f_y = motion.virtual_force(s.pos, s.heading, s.is_leader, s.goal_heading, p, self._geometry())
+        goal_weight, goal_heading = self.goal_terms()
+        f_x, f_y = motion.virtual_force(s.pos, s.heading, s.is_leader, goal_heading, p, self._geometry(),
+                                        goal_weight=goal_weight)
         u, w = motion.velocity_commands(f_x, f_y, p)
         prev_pos = s.pos
         s.pos, s.heading = motion.integrate(s.pos, s.heading, u, w, p.dt)
