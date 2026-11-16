@@ -1,5 +1,6 @@
 import inspect
 import math
+from dataclasses import replace
 
 import numpy as np
 import pytest
@@ -105,6 +106,15 @@ def test_agents_aim_at_the_centre_or_the_only_sensed_post_if_in_front(pos, headi
         assert np.isnan(aim[0]).all()
     else:
         np.testing.assert_allclose(aim[0], target)
+
+
+def test_lone_post_aim_centre_aims_at_the_centre_when_the_post_is_in_front():
+    params = replace(P, lone_post_aim="centre")
+    g, n, aim = gates.gate_targets(np.array([[10.0 - R, 2.0], [10.0 - R, 2.0]]), np.array([0.0, math.pi]),
+                                   [GATE], params)
+    assert (g[0], n[0]) == (0, 1)
+    np.testing.assert_allclose(aim[0], GATE.centre)
+    assert g[1] == -1   # the post is behind
 
 
 def test_posts_marked_invisible_are_not_sensed():

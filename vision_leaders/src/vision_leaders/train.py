@@ -1,19 +1,26 @@
-"""Train GoalNet by imitating the camera-limited gate rule, then fine-tune it
-with DAgger on the states the network itself visits.
+"""Train GoalNet by imitating the gate rule, then fine-tune it with DAgger on
+the states the network itself visits.
 
     python -m vision_leaders.train --out models/goalnet.pt
+    python -m vision_leaders.train --out models/goalnet_centre.pt --lone-post-aim centre
+    python -m vision_leaders.train --out models/goalnet_aim.pt --aim models/aim_evolved.json
 
 The model after each stage is also kept, as goalnet_bc.pt and
-goalnet_dagger<i>.pt next to --out.
+goalnet_dagger<i>.pt next to --out. The teacher is emergent_leaders' rule with
+perfect sensing ("full"); --lone-post-aim centre makes agents that sense one
+post of a gate aim at its centre rather than at the post; --aim uses the
+tuned teacher of aiming.py (and its goal_gain and beta) instead.
 
 1. Behaviour cloning: the teacher drives the swarm on random courses; every
    `every` steps each agent's image is stored with the teacher's label.
 2. DAgger: the network drives; its images are labelled by the teacher, added
    to the data, and the network is retrained on all of it.
 
-Training courses are random: three-gate slaloms (offset 0-1.5 m) and four-gate
-winding courses (turns up to 45 deg), at the largest spacing the course rules
-allow. Starts face the course (0 +/- 30 deg) in 70% of runs, random otherwise.
+Training courses are random: three-gate slaloms (offset 0-1.5 m) and winding
+courses. With --max-turn 45 (default) these have four gates, turns up to
+45 deg and the largest spacing the course rules allow; with a larger
+--max-turn, five gates 6-8 m apart (as evaluate.py's, which the course rules
+don't allow at sharp turns). Starts face the course (0 +/- 30 deg) in 70% of runs, random otherwise.
 Explorers are off. Images without a teacher target are subsampled
 (keep_no_gate) to balance the data.
 """
@@ -31,19 +38,20 @@ from torch import nn
 from emergent_leaders import ModelParams, grid_swarm, random_turns, slalom_course, winding_course
 from emergent_leaders.gates import max_slalom_spacing, max_spacing
 
+from .aiming import Aim
 from .camera import CameraParams
 from .network import GoalNet
 from .simulation import VisionSimulation
 
 
-def random_scenario(rng, params):
+def random_scenario(rng, params, max_turn=45.0):
     """(gates, start state) for one training run."""
     r, ahead = params.gate_sense_range, params.gate_lookahead
     if rng.random() < 0.5:
         offset = rng.uniform(0.0, 1.5)
         gates = slalom_course(3, spacing=max_slalom_spacing(r, ahead, offset=offset), offset=offset)
-    else:
-        turns = random_turns(4, math.radians(45), rng)
+    elif max_turn <= 45.0:
+        turns = random_turns(4, math.radians(max_turn), rng)
 
         def build(spacing):
             return winding_course(turns, spacing)
@@ -52,17 +60,20 @@ def random_scenario(rng, params):
         except ValueError:
             spacing = 6.0
         gates = build(spacing)
+    else:
+        gates = winding_course(random_turns(5, math.radians(max_turn), rng), rng.uniform(6.0, 8.0))
     start = grid_swarm(25, rng, heading=0.0 if rng.random() < 0.7 else None)
     return gates, start
 
 
-def rollout(seed, net=None, camera=CameraParams(), params=None, duration=300.0, every=20, keep_no_gate=0.3):
+def rollout(seed, net=None, camera=CameraParams(), params=None, duration=300.0, every=20, keep_no_gate=0.3, aim=None,
+            max_turn=45.0):
     """Images and teacher labels from one run: (images uint8, lead bool, bearing float32)."""
     params = params or ModelParams(sigma_leader=0.7)
     rng = np.random.default_rng(seed)
-    gates, start = random_scenario(rng, params)
+    gates, start = random_scenario(rng, params, max_turn)
     sim = VisionSimulation(params=params, state=start, gates=gates, explore=False, seed=seed, camera=camera,
-                           net=net, check_course=False)
+                           net=net, check_course=False, aim=aim)
     images, lead, bearing = [], [], []
     for step in range(round(duration / params.dt)):
         sim.step()
@@ -75,20 +86,21 @@ def rollout(seed, net=None, camera=CameraParams(), params=None, duration=300.0, 
 
 
 def _rollout_job(args):
-    seed, net_state, camera, duration = args
+    seed, net_state, camera, params, duration, aim, max_turn = args
     torch.set_num_threads(1)
     net = None
     if net_state is not None:
         net = GoalNet(camera)
         net.load_state_dict(net_state)
         net.eval()
-    return rollout(seed, net, camera, duration=duration)
+    return rollout(seed, net, camera, params, duration=duration, aim=aim, max_turn=max_turn)
 
 
-def collect(seeds, net=None, camera=CameraParams(), duration=300.0, workers=20):
+def collect(seeds, net=None, camera=CameraParams(), duration=300.0, workers=20, params=None, aim=None, max_turn=45.0):
     state = None if net is None else {k: v.cpu() for k, v in net.state_dict().items()}
+    params = params or ModelParams(sigma_leader=0.7)
     with Pool(workers) as pool:
-        parts = pool.map(_rollout_job, [(s, state, camera, duration) for s in seeds])
+        parts = pool.map(_rollout_job, [(s, state, camera, params, duration, aim, max_turn) for s in seeds])
     return tuple(np.concatenate(x) for x in zip(*parts))
 
 
@@ -139,13 +151,20 @@ def main(argv=None):
     parser.add_argument("--duration", type=float, default=300.0, help="simulated time per run [s]")
     parser.add_argument("--epochs", type=int, default=8)
     parser.add_argument("--workers", type=int, default=20)
+    parser.add_argument("--lone-post-aim", choices=["post", "centre"], default="post",
+                        help="teacher's aim when it senses one post of a gate")
+    parser.add_argument("--aim", default=None, help="tuned teacher (JSON from evolve.py) instead of the rule")
+    parser.add_argument("--max-turn", type=float, default=45.0, help="largest turn of the winding training courses [deg]")
     args = parser.parse_args(argv)
     sys.stdout.reconfigure(line_buffering=True)   # progress shows up in redirected logs
 
     torch.manual_seed(0)
     camera = CameraParams()
+    aim = Aim.load(args.aim) if args.aim else None
+    params = aim.model_params() if aim else ModelParams(sigma_leader=0.7, lone_post_aim=args.lone_post_aim)
     t0 = time.time()
-    data = collect(range(args.bc_runs), camera=camera, duration=args.duration, workers=args.workers)
+    data = collect(range(args.bc_runs), camera=camera, duration=args.duration, workers=args.workers, params=params,
+                   aim=aim, max_turn=args.max_turn)
     print(f"behaviour cloning: {len(data[1])} images, {100 * data[1].mean():.0f}% with a gate target "
           f"({time.time() - t0:.0f} s)")
     out = pathlib.Path(args.out)
@@ -154,7 +173,8 @@ def main(argv=None):
     seed = args.bc_runs
     for it in range(args.dagger_iters):
         t0 = time.time()
-        new = collect(range(seed, seed + args.dagger_runs), net, camera, args.duration, args.workers)
+        new = collect(range(seed, seed + args.dagger_runs), net, camera, args.duration, args.workers, params, aim,
+                      args.max_turn)
         seed += args.dagger_runs
         data = tuple(np.concatenate([a, b]) for a, b in zip(data, new))
         print(f"DAgger {it + 1}: +{len(new[1])} images, {len(data[1])} in total ({time.time() - t0:.0f} s)")

@@ -13,6 +13,9 @@ senses:
   gate_front_half_angle of its heading);
 - one: that post, if the post lies in front of it. Closing in on the post
   brings the other one into range, and the aim shifts to the centre.
+  With lone_post_aim = "centre" it aims at the gate's centre instead (still
+  only if the post lies in front of it). This is privileged: the agent
+  knows where the post it does not sense is.
 
 Agents ignore targets behind them, so they do not turn back towards a gate
 they have just passed. With both posts sensed and the centre behind, the agent
@@ -119,6 +122,8 @@ def gate_targets(pos, heading, gates, params, visible=None):
         aim = np.where(sensed[:, [0]], posts[0], posts[1])
         aim[sensed.all(axis=1)] = gate.centre
         aims = sensed.any(axis=1) & _in_front(pos, heading, aim, params.gate_front_half_angle)
+        if params.lone_post_aim == "centre":
+            aim[:] = gate.centre
         # with targets at two gates, keep the nearer one
         aims &= ~(np.linalg.norm(aim - pos, axis=1) >= np.linalg.norm(target - pos, axis=1))
         gate_idx[aims] = g

@@ -50,6 +50,12 @@ With the full teacher, the network has to learn from the image what the rule
 senses directly, e.g. that a lone post close beside it means it is passing
 through the gate.
 
+With `ModelParams(lone_post_aim="centre")` the full teacher aims at the gate
+centre also when it senses only one post (`train.py --lone-post-aim
+centre`). Aiming at a lone post is what makes most agents miss a gate (see
+the `emergent_leaders` README); the centre is privileged information for the
+rule, but the camera often shows the far post beyond the rule's 4 m.
+
 ## Network (`network.py`)
 
 `GoalNet`: three 3 × 3 convolutions (16, 32, 32 channels, the last two with
@@ -74,7 +80,8 @@ still count as leaders (spacing, statistics, video).
    labels the images it sees, they are added to the data, and the network is
    retrained on all of it.
 
-Training on 22 CPU cores took 42 min.
+Training on 22 CPU cores took 42 min (`goalnet.pt`; 44 min for
+`goalnet_centre.pt`).
 
 ## Results
 
@@ -99,6 +106,113 @@ courses both lose the swarm at sharp turns (see the `emergent_leaders`
 README), so the network isn't the limit there. The closed-loop effect of
 DAgger was not measured separately: the behaviour-cloning model of this run
 was overwritten (`train.py` now keeps each stage's model).
+
+`models/goalnet_centre.pt` imitates the centre-aiming teacher (otherwise
+trained the same way; log in `models/train_centre.log`). Offline: 98.8% lead
+agreement, bearing error median 1.6°, 90th percentile 5.2° (2.0° and 7.1°
+after behaviour cloning). Closed loop (`python -m vision_leaders.evaluate
+models/goalnet.pt models/goalnet_centre_bc.pt models/goalnet_centre.pt
+--rules post centre`):
+
+| suite | perception | through each gate | runs with > 50% through all |
+|---|---|---|---|
+| default slalom | rule, aims at a lone post | 92 / 90 / 81% | 10 / 10 |
+| | rule, aims at the centre | 98 / 96 / 91% | 10 / 10 |
+| | `goalnet.pt` | 90 / 91 / 71% | 10 / 10 |
+| | `goalnet_centre_bc.pt` (behaviour cloning only) | 98 / 96 / 90% | 10 / 10 |
+| | `goalnet_centre.pt` | 98 / 96 / 91% | 10 / 10 |
+| winding, 7 m | rule, aims at a lone post | 93 / 57 / 40 / 31 / 25% | 5 / 20 |
+| | rule, aims at the centre | 98 / 68 / 41 / 30 / 33% | 6 / 20 |
+| | `goalnet.pt` | 91 / 61 / 40 / 28 / 24% | 4 / 20 |
+| | `goalnet_centre_bc.pt` | 98 / 40 / 31 / 10 / 19% | 1 / 20 |
+| | `goalnet_centre.pt` | 95 / 57 / 46 / 19 / 15% | 3 / 20 |
+
+On the slalom the new network matches its teacher and gets 8–20 points more
+of the swarm through each gate than `goalnet.pt`. On the winding courses it
+gets 95% through gate 1 but falls behind its teacher at the turns; DAgger
+helps there (1 → 3 of 20 runs), but the gap to the teacher (6 of 20) remains.
+With 20 courses and whole-swarm failures at turns, these counts are noisy.
+
+### Tuned teacher (`aiming.py`, `evolve.py`)
+
+Imitation can't beat its teacher, so the teacher was tuned on gate passage
+first. `aiming.Aim` generalises the centre-aiming rule: agents off to one
+side aim past the centre by `lateral` times their own offset from it, at a
+point `through` metres past the gate line, and switch to the next gate once
+its target is less than `next_margin` farther than the current one;
+`goal_gain` and `beta` replace G and β. CMA-ES (`python -m
+vision_leaders.evolve`, no cameras, about 3 min per generation on 22 cores)
+ran 30 generations of 16 candidates, each generation on 12 fresh training
+courses (slaloms with 0.5–1.5 m offsets, five-gate winding courses with turns
+up to 90°, 7 m; seeds disjoint from the evaluation suites); fitness is the
+mean fraction of the swarm through each gate. Log: `models/evolve.log`. The
+search had not converged and ended with every parameter at a bound
+(`models/aim_evolved.json`: lateral 1.5, through 3 m, next_margin 3 m,
+G 12, β 0.1). On the same courses, its mean beat the centre rule in 14 of
+the last 16 generations, by 7 points on average.
+
+On the evaluation suites (teachers driving, no cameras; detached: agents
+outside the largest group connected within 2 m at the end, mean / max):
+
+| teacher | slalom: through each gate | runs | winding: through each gate | runs | winding detached |
+|---|---|---|---|---|---|
+| centre rule | 98 / 96 / 91% | 10 / 10 | 98 / 68 / 41 / 30 / 33% | 6 / 20 | 0 / 0 |
+| tuned | 99 / 99 / 98% | 10 / 10 | 99 / 82 / 56 / 54 / 38% | 8 / 20 | 2.6 / 12 |
+| tuned, β 0.5 | 100 / 100 / 97% | 10 / 10 | 100 / 87 / 61 / 55 / 45% | 9 / 20 | 1.4 / 10 |
+| tuned aiming, G 4, β 0.5 | 98 / 96 / 93% | 10 / 10 | 99 / 73 / 52 / 49 / 38% | 7 / 20 | 0 / 0 |
+| tuned, through 0 | 100 / 100 / 100% | 10 / 10 | 100 / 55 / 23 / 9 / 6% | 1 / 20 | 5.2 / 15 |
+| tuned, lateral 0 | 98 / 98 / 95% | 10 / 10 | 97 / 72 / 52 / 46 / 28% | 6 / 20 | 1.7 / 9 |
+| tuned, next_margin 0 | 99 / 99 / 98% | 10 / 10 | 99 / 79 / 55 / 55 / 34% | 7 / 20 | 3.2 / 11 |
+
+The low β splits the swarm on winding courses (the fitness doesn't penalise
+that), and β 0.5 does better there. With the motion model unchanged
+(G 4, β 0.5), the tuned aiming alone does little on the slalom
+(98 / 96 / 93%, against 98 / 96 / 91%) and gets 7 of 20 winding runs
+(62% through on average, against 54%), with no agent detached; aiming past the gate line
+(`through`) matters most once G is high. That teacher
+(`models/aim_evolved_default_motion.json`) is the one the networks below
+imitate.
+
+A second search kept the motion model fixed (`--fix goal_gain=4 --fix
+beta=0.5`), started from that teacher (`--init`), and widened the bounds that
+the first search ended on (lateral up to 4, through and next_margin up to
+6 m; the first search used 1.5, 3 and 3): 30 generations of 10 candidates on
+16 courses each (`models/evolve_fixed.log`). It converged (step size 0.2 →
+0.09) to lateral 3.8, through 2.2 m, next_margin 1.7 m
+(`models/aim_evolved_fixed.json`), but is no better: on the evaluation
+suites 99 / 96 / 92% (10 / 10) and 98 / 76 / 56 / 46 / 33% (6 / 20), and on
+200 fresh training courses, paired with the first teacher, +0.5 ± 0.2
+points on slaloms and −0.8 ± 1.2 on winding courses (centre rule: −1.6 and
+−4.4). Within this aiming family, the motion model unchanged, the teacher
+has plateaued at about 62% through on the winding suite.
+
+| suite | perception | through each gate | runs with > 50% through all |
+|---|---|---|---|
+| default slalom | centre rule | 98 / 96 / 91% | 10 / 10 |
+| | tuned teacher | 98 / 96 / 93% | 10 / 10 |
+| | `goalnet_aim.pt` (training turns ≤ 45°) | 98 / 97 / 92% | 10 / 10 |
+| | `goalnet_aim90_bc.pt` (turns ≤ 90°, behaviour cloning only) | 98 / 97 / 92% | 10 / 10 |
+| | `goalnet_aim90.pt` (turns ≤ 90°) | 98 / 96 / 91% | 10 / 10 |
+| winding, 7 m | centre rule | 98 / 68 / 41 / 30 / 33% | 6 / 20 |
+| | tuned teacher | 99 / 73 / 52 / 49 / 38% | 7 / 20 |
+| | `goalnet_aim.pt` | 98 / 53 / 40 / 19 / 11% | 2 / 20 |
+| | `goalnet_aim90_bc.pt` | 98 / 57 / 41 / 28 / 24% | 2 / 20 |
+| | `goalnet_aim90.pt` | 98 / 76 / 52 / 40 / 34% | 6 / 20 |
+
+`goalnet_aim.pt` was trained like the others, on winding courses with turns
+up to 45°; the winding suite has turns up to 90°. On the states it visits
+there, it agrees with its teacher at gate 1 and after turns below 45° (misses
+1.3–1.7% of the teacher's leads, bearing error median 1.0–1.3°), but not
+after sharper turns (misses 5–7%, median 17–31°). `goalnet_aim90.pt` was
+trained with `--max-turn 90 --duration 450` (winding training courses with
+five gates 6–8 m apart, turns up to 90°; about an hour): offline 99.1% lead
+agreement, bearing error median 2.5°, 90th percentile 9.0°. It is the first
+network that keeps up with its teacher on the winding suite (60% through on
+average, against 62% for the teacher, 54% for the centre rule and 49% for
+`goalnet.pt`); DAgger matters here (2 → 6 of 20 runs). Part of the gain over
+`goalnet_centre.pt` may come from the sharper training turns rather than the
+tuned teacher; a centre-teacher network trained with `--max-turn 90` would
+tell.
 
 Confidence weighting (`python -m vision_leaders.evaluate models/goalnet.pt
 --goal-weighting threshold confidence`) makes no clear difference:
@@ -161,6 +275,11 @@ python -m vision_leaders.train --out models/goalnet.pt               # ~40 min o
 python -m vision_leaders.evaluate models/goalnet.pt                  # network vs rule
 python -m vision_leaders.run --model models/goalnet.pt --gates 3 --seed 0 --video slalom.mp4
 python -m vision_leaders.run --gates 3 --seed 0 --teacher camera     # camera-limited rule drives
+pip install -e ".[evolve]"
+python -m vision_leaders.evolve --out models/aim_evolved.json --courses 12   # ~90 min on 22 cores
+python -m vision_leaders.evolve --out models/aim_evolved_fixed.json --popsize 10 --courses 16 \
+    --fix goal_gain=4 --fix beta=0.5 --init models/aim_evolved_default_motion.json
+python -m vision_leaders.train --out models/goalnet_aim.pt --aim models/aim_evolved_default_motion.json
 ```
 
 `run.py` builds courses and starts like `emergent_leaders.run` (same seed,

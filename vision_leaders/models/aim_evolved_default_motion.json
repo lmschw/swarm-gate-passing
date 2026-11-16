@@ -1,0 +1,7 @@
+{
+  "lateral": 1.5,
+  "through": 3.0,
+  "next_margin": 3.0,
+  "goal_gain": 4.0,
+  "beta": 0.5
+}

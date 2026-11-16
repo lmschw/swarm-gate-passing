@@ -45,6 +45,9 @@ class ModelParams:
     gate_sense_range: float = 4.0             # gate posts within this distance are sensed perfectly
     gate_front_half_angle: float = math.pi / 2  # a target counts as in front within this angle of the heading
     post_radius: float = 0.15                 # posts are solid discs; agents are points
+    # With one post of a gate sensed, aim at that post ("post"), or at the
+    # gate's centre ("centre"; privileged: the agent knows where the other post is).
+    lone_post_aim: str = "post"
     # Course design: how far past a gate the front of the swarm reaches while
     # agents are still crossing it (3.5-4.3 m for 25 agents). The next gate
     # must be in sensing range of that stretch.

@@ -28,6 +28,9 @@ def main(argv=None):
     parser.add_argument("--duration", type=float, default=320.0, help="simulated time [s]")
     parser.add_argument("--start-heading", type=float, default=0.0, help="[deg], +/- 30 deg")
     parser.add_argument("--sigma-leader", type=float, default=0.7)
+    parser.add_argument("--lone-post-aim", choices=["post", "centre"], default="post",
+                        help="the rule's aim when it senses one post of a gate")
+    parser.add_argument("--aim", default=None, help="tuned teacher (JSON from evolve.py) instead of the rule")
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--gates", type=int, default=3)
     parser.add_argument("--course", choices=["slalom", "winding"], default="slalom")
@@ -49,12 +52,17 @@ def main(argv=None):
         from .network import GoalNet
         torch.set_num_threads(1)   # 25 small images per step: more threads only add overhead
         net = GoalNet.load(args.model)
-    params = ModelParams(sigma_leader=args.sigma_leader)
+    aim = None
+    if args.aim:
+        from .aiming import Aim
+        aim = Aim.load(args.aim)
+    params = (aim.model_params(ModelParams(sigma_leader=args.sigma_leader)) if aim
+              else ModelParams(sigma_leader=args.sigma_leader, lone_post_aim=args.lone_post_aim))
     gates = course(args.course, args.gates, args.seed, args.gate_spacing, args.max_turn, params)
     kwargs = {} if net is None else {"camera": net.cam}
     sim = VisionSimulation(params=params, state=start(args.seed, heading_deg=args.start_heading), gates=gates,
                            explore=False, seed=args.seed, net=net, teacher=args.teacher, check_course=False,
-                           goal_weighting=args.goal_weighting,
+                           goal_weighting=args.goal_weighting, aim=aim,
                            **kwargs)
     frames = [camera_frame(sim, args.camera_agent)] if args.video else None
 
@@ -63,7 +71,7 @@ def main(argv=None):
 
     history = sim.run(round(args.duration / params.dt), record_every=args.record_every,
                       callback=record if args.video else None)
-    source = f"network ({args.goal_weighting})" if net else args.teacher + " rule"
+    source = f"network ({args.goal_weighting})" if net else ("tuned teacher" if aim else args.teacher + " rule")
     print(f"{source} perception, {sim.step_count * params.dt:.0f} s")
     for g, times in enumerate(sim.gate_pass_time):
         print(f"gate {g + 1}: {int((~np.isnan(times)).sum())} / {sim.state.n} agents through")

@@ -1,0 +1,25 @@
+behaviour cloning: 172725 images, 68% with a gate target (365 s)
+  epoch 1: val loss 0.461, lead accuracy 95.0%, bearing error median 6.1 deg, 90th pct 19.1 deg
+  epoch 2: val loss 0.248, lead accuracy 96.4%, bearing error median 3.8 deg, 90th pct 12.3 deg
+  epoch 3: val loss 0.167, lead accuracy 97.5%, bearing error median 2.7 deg, 90th pct 9.5 deg
+  epoch 4: val loss 0.139, lead accuracy 97.7%, bearing error median 2.5 deg, 90th pct 8.5 deg
+  epoch 5: val loss 0.125, lead accuracy 98.1%, bearing error median 2.6 deg, 90th pct 8.3 deg
+  epoch 6: val loss 0.116, lead accuracy 98.2%, bearing error median 2.2 deg, 90th pct 7.4 deg
+  epoch 7: val loss 0.103, lead accuracy 98.3%, bearing error median 2.2 deg, 90th pct 6.8 deg
+  epoch 8: val loss 0.100, lead accuracy 98.2%, bearing error median 2.0 deg, 90th pct 7.1 deg
+DAgger 1: +89442 images, 262167 in total (320 s)
+  epoch 1: val loss 0.155, lead accuracy 98.2%, bearing error median 2.4 deg, 90th pct 8.2 deg
+  epoch 2: val loss 0.138, lead accuracy 98.3%, bearing error median 2.2 deg, 90th pct 7.9 deg
+  epoch 3: val loss 0.123, lead accuracy 98.6%, bearing error median 2.0 deg, 90th pct 6.8 deg
+  epoch 4: val loss 0.130, lead accuracy 98.7%, bearing error median 2.4 deg, 90th pct 7.2 deg
+DAgger 2: +87648 images, 349815 in total (305 s)
+  epoch 1: val loss 0.109, lead accuracy 98.7%, bearing error median 2.0 deg, 90th pct 6.2 deg
+  epoch 2: val loss 0.104, lead accuracy 98.7%, bearing error median 1.8 deg, 90th pct 5.9 deg
+  epoch 3: val loss 0.096, lead accuracy 98.7%, bearing error median 1.6 deg, 90th pct 5.4 deg
+  epoch 4: val loss 0.092, lead accuracy 98.8%, bearing error median 1.7 deg, 90th pct 5.5 deg
+DAgger 3: +93179 images, 442994 in total (319 s)
+  epoch 1: val loss 0.092, lead accuracy 98.8%, bearing error median 1.5 deg, 90th pct 5.4 deg
+  epoch 2: val loss 0.091, lead accuracy 98.8%, bearing error median 1.8 deg, 90th pct 5.4 deg
+  epoch 3: val loss 0.087, lead accuracy 98.8%, bearing error median 1.5 deg, 90th pct 5.2 deg
+  epoch 4: val loss 0.088, lead accuracy 98.8%, bearing error median 1.6 deg, 90th pct 5.2 deg
+model -> models/goalnet_centre.pt

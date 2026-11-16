@@ -142,6 +142,8 @@ subclasses override it to change the alignment partners
 `Simulation.attraction()` returns a per-agent factor on the attraction to
 neighbours (0 keeps only the repulsion), or None for full attraction
 (`virtual_force(..., attraction=...)`).
+`Simulation.speed_limit()` returns a per-agent cap on the forward speed, or
+None for no cap.
 
 `Simulation.next_gate_in_view()` reports, for each gate, whether some agent
 did aim at the next gate before the last agent was through.
@@ -334,6 +336,29 @@ Findings:
   asin(4/12.5) ≈ 19°. The block is wider (4.15 m) than the clear opening
   between the posts (4 m − 2 × 0.15 m = 3.7 m), and its centre crosses a
   median 0.4 m off the gate centre, so its edges hit or miss the posts.
+  But most of these misses come from aiming at a lone post (see *Lone-post
+  aiming* below), not from the swarm's width.
+- **Lone-post aiming causes most misses.** An agent that senses only one
+  post of a gate aims at that post, so it steers onto it or just past it.
+  Agents that missed spent 84–89% of their time aiming at the gate with only
+  one post sensed; agents that passed spent 35–39%. With a privileged rule
+  in which every agent that senses any post of a gate aims at its centre,
+  and with wider gates (rule otherwise unchanged, explorers off; through
+  each gate, runs with most of the swarm through all gates, and misses at
+  gates most of the swarm passed):
+
+  | width | rule, slalom | centre, slalom | rule, winding | centre, winding |
+  |---|---|---|---|---|
+  | 4 m | 92/90/81%, 10 / 10, 12.3% | 98/96/91%, 10 / 10, 4.7% | 93/57/40/31/25%, 5 / 20, 14.3% | 98/68/44/31/34%, 6 / 20, 8.3% |
+  | 5 m | 90/84/82%, 10 / 10, 14.4% | 100/100/98%, 10 / 10, 0.7% | 90/54/40/29/25%, 5 / 20, 19.7% | 100/66/39/29/15%, 3 / 20, 1.1% |
+  | 6 m | 81/44/48%, 4 / 10, 31.8% | 100%, 10 / 10, 0% | 83/45/47/21/20%, 1 / 20, 28.4% | 100/51/25/10/5%, 1 / 20, 0% |
+  | 7 m | 57/20/19%, 1 / 10, 42.2% | 100%, 10 / 10, 0% | 62/27/24/10/2%, 0 / 20, 39.4% | 100/50/25/10/5%, 0 / 20, 0% |
+
+  With the rule, wider gates are worse because more agents see only the post
+  on their side, for longer. Aiming at the centre removes about 60% of the
+  misses at 4 m (slalom; 40% winding); the rest is the swarm's width, and
+  from 5 m on almost no agent misses. The winding courses still fail as a
+  whole at the turns, and more so with wide gates.
 - **Breaking formation near posts** doesn't help either. Agents within r of
   their nearest post stop aligning (k = 0) or align only with their k nearest
   neighbours; rule, explorers off, runs with most of the swarm through all
@@ -376,6 +401,29 @@ Findings:
   89% (2.8) with repulsion only. The goal pull (median 3.5 inward) is matched
   at baseline by alignment adding 2.5 inward, since the swarm as a whole is
   turning into the gate; breaking alignment removes that help.
+- **Yielding near posts** (agents slow down to queue instead of pushing
+  sideways) is worse still. Agents within r of a post that aim at the gate,
+  with their goal more than θ off their heading, have their speed capped
+  (u_max is 0.1 m/s); alignment and attraction stay. Same runs (baseline
+  10 / 10, 5 / 20):
+
+  | r, θ | cap 0.05 m/s | cap 0.02 m/s |
+  |---|---|---|
+  | 1.5 m, 15° | 6 / 10, 2 / 20 | 1 / 10, 0 / 20 |
+  | 1.5 m, 30° | 4 / 10, 0 / 20 | 0 / 10, 0 / 20 |
+  | 2.5 m, 15° | 7 / 10, 2 / 20 | 0 / 10, 0 / 20 |
+  | 2.5 m, 30° | 7 / 10, 5 / 20 | 0 / 10, 0 / 20 |
+
+  Gate 1 falls to 67–82%; at 0.02 m/s up to 20 agents end up separated from
+  the swarm. On the slalom's gate 1 (r 1.5 m, 15°, 0.05 m/s) every agent
+  that missed had yielded, and a quarter of the agents that yielded missed.
+  A yielding agent falls back but keeps its lateral offset, and the swarm
+  flows past it; 61% of the misses lost their gate target while still
+  before the gate line (the gate centre moved to more than 90° off their
+  heading), became followers, and were carried past the outside of the post
+  (10% of misses at baseline). Yielding also starts too early: agents begin
+  yielding a median 1.3 m from the gate centre, still inside the clear
+  opening (1.85 m).
 - **Tighter spacing at gates** doesn't get more of the swarm through. The rule
   drives (perfect sensing, explorers off), σ = 0.7 elsewhere; runs with most
   of the swarm through all gates, default slalom / five-gate winding at 7 m:

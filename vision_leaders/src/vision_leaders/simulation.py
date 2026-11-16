@@ -7,7 +7,10 @@ gate perception is computed alongside, and the network's if one is given:
   sensing within gate_sense_range, whether or not the camera shows the posts.
   The network has to infer from the image what the rule senses directly,
   e.g. that a lone post close beside the agent means it is passing between
-  the posts (the rule also senses the post behind and stops aiming);
+  the posts (the rule also senses the post behind and stops aiming). With
+  params.lone_post_aim = "centre", an agent sensing one post aims at the
+  gate's centre instead of at the post. With aim (an aiming.Aim), the tuned
+  teacher of aiming.py replaces the rule (pass aim.model_params() as params);
 - teacher="camera": the same rule, but a post is sensed only when the camera
   also shows at least visible_threshold of a pixel of it. This teacher fails
   at gates: an agent passing between the posts sees only the one in front
@@ -41,6 +44,7 @@ import numpy as np
 from emergent_leaders import Simulation
 from emergent_leaders.gates import gate_targets
 
+from .aiming import aim_targets
 from .camera import CameraParams, render
 
 TEACHERS = ("full", "camera")
@@ -53,7 +57,7 @@ def _wrap(angle):
 
 class VisionSimulation(Simulation):
     def __init__(self, *args, camera=CameraParams(), net=None, teacher="full", visible_threshold=0.5,
-                 lead_threshold=0.5, goal_weighting="threshold", **kwargs):
+                 lead_threshold=0.5, goal_weighting="threshold", aim=None, **kwargs):
         if teacher not in TEACHERS:
             raise ValueError(f"teacher must be one of {TEACHERS}, got {teacher!r}")
         if goal_weighting not in GOAL_WEIGHTINGS:
@@ -61,6 +65,7 @@ class VisionSimulation(Simulation):
         if goal_weighting == "confidence" and net is None:
             raise ValueError("goal_weighting='confidence' needs a network")
         self.goal_weighting = goal_weighting
+        self.aim = aim
         self.camera = camera
         self.net = net
         self.teacher = teacher
@@ -72,7 +77,10 @@ class VisionSimulation(Simulation):
         s = self.state
         self.images, self.post_visibility = render(s.pos, s.heading, self.gates, self.params.post_radius, self.camera)
         visible = self.post_visibility >= self.visible_threshold if self.teacher == "camera" else None
-        teacher = gate_targets(s.pos, s.heading, self.gates, self.params, visible=visible)
+        if self.aim is None:
+            teacher = gate_targets(s.pos, s.heading, self.gates, self.params, visible=visible)
+        else:
+            teacher = aim_targets(s.pos, s.heading, self.gates, self.params, self.aim, visible=visible)
         to_target = teacher[2] - s.pos
         self.teacher_lead = teacher[0] >= 0
         self.teacher_bearing = np.where(self.teacher_lead,

@@ -211,6 +211,11 @@ class Simulation:
         repulsion), or None for full attraction. Override to change it."""
         return None
 
+    def speed_limit(self):
+        """Per-agent cap on the forward speed (below u_max), or None for no
+        cap. Override to slow agents down."""
+        return None
+
     def step(self):
         """Advance one time step; returns (n_promoted, n_demoted)."""
         s, p = self.state, self.params
@@ -221,6 +226,9 @@ class Simulation:
                                         goal_weight=goal_weight, sigma=self.spacing(),
                                         align_with=self.alignment(geometry), attraction=self.attraction())
         u, w = motion.velocity_commands(f_x, f_y, p)
+        limit = self.speed_limit()
+        if limit is not None:
+            u = np.minimum(u, limit)
         prev_pos = s.pos
         s.pos, s.heading = motion.integrate(s.pos, s.heading, u, w, p.dt)
         if self.gates:
