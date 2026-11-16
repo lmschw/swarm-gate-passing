@@ -10,6 +10,8 @@ goalnet_dagger<i>.pt next to --out. The teacher is emergent_leaders' rule with
 perfect sensing ("full"); --lone-post-aim centre makes agents that sense one
 post of a gate aim at its centre rather than at the post; --aim uses the
 tuned teacher of aiming.py (and its goal_gain and beta) instead.
+--sense-range sets the teacher's gate_sense_range; the training courses stay
+those of the default range.
 
 1. Behaviour cloning: the teacher drives the swarm on random courses; every
    `every` steps each agent's image is stored with the teacher's label.
@@ -26,6 +28,7 @@ Explorers are off. Images without a teacher target are subsampled
 """
 import argparse
 import math
+from dataclasses import replace
 import pathlib
 import sys
 import time
@@ -46,7 +49,7 @@ from .simulation import VisionSimulation
 
 def random_scenario(rng, params, max_turn=45.0):
     """(gates, start state) for one training run."""
-    r, ahead = params.gate_sense_range, params.gate_lookahead
+    r, ahead = ModelParams().gate_sense_range, params.gate_lookahead   # courses don't follow the teacher's range
     if rng.random() < 0.5:
         offset = rng.uniform(0.0, 1.5)
         gates = slalom_course(3, spacing=max_slalom_spacing(r, ahead, offset=offset), offset=offset)
@@ -155,6 +158,7 @@ def main(argv=None):
                         help="teacher's aim when it senses one post of a gate")
     parser.add_argument("--aim", default=None, help="tuned teacher (JSON from evolve.py) instead of the rule")
     parser.add_argument("--max-turn", type=float, default=45.0, help="largest turn of the winding training courses [deg]")
+    parser.add_argument("--sense-range", type=float, default=None, help="teacher's gate_sense_range [m]")
     args = parser.parse_args(argv)
     sys.stdout.reconfigure(line_buffering=True)   # progress shows up in redirected logs
 
@@ -162,6 +166,8 @@ def main(argv=None):
     camera = CameraParams()
     aim = Aim.load(args.aim) if args.aim else None
     params = aim.model_params() if aim else ModelParams(sigma_leader=0.7, lone_post_aim=args.lone_post_aim)
+    if args.sense_range is not None:
+        params = replace(params, gate_sense_range=args.sense_range)
     t0 = time.time()
     data = collect(range(args.bc_runs), camera=camera, duration=args.duration, workers=args.workers, params=params,
                    aim=aim, max_turn=args.max_turn)

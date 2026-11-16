@@ -44,14 +44,17 @@ def neighbour_geometry(pos, heading, sense_range):
 
 def proximal_control(dist, bearing, sigma, epsilon, attraction=None):
     """sigma: per-agent spacing parameter, shape (n,). attraction: optional
-    per-agent factor on the attractive part of the force (0 keeps only the
-    repulsion), shape (n,)."""
+    factor on the attractive part of the force (0 keeps only the repulsion),
+    per agent, shape (n,), or per pair, shape (n, n) (row i: agent i's
+    attraction to each neighbour)."""
     s = sigma[:, None]
     with np.errstate(divide="ignore", invalid="ignore"):
         magnitude = -epsilon * (2.0 * s**4 / dist**5 - s**2 / dist**3)
     magnitude[~np.isfinite(dist)] = 0.0
     if attraction is not None:
-        magnitude = np.where(magnitude > 0, attraction[:, None] * magnitude, magnitude)
+        attraction = np.asarray(attraction)
+        factor = attraction if attraction.ndim == 2 else attraction[:, None]
+        magnitude = np.where(magnitude > 0, factor * magnitude, magnitude)
     return np.sum(magnitude * np.cos(bearing), axis=1), np.sum(magnitude * np.sin(bearing), axis=1)
 
 

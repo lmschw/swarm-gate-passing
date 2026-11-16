@@ -207,8 +207,14 @@ class Simulation:
         return None
 
     def attraction(self):
-        """Per-agent factor on the attraction to neighbours (0 keeps only the
-        repulsion), or None for full attraction. Override to change it."""
+        """Factor on the attraction to neighbours (0 keeps only the
+        repulsion), per agent (n,) or per pair (n, n), or None for full
+        attraction. Override to change it."""
+        return None
+
+    def extra_force(self):
+        """Per-agent (f_x, f_y) in the body frame added to the virtual force,
+        or None for none. Override to add a force term."""
         return None
 
     def speed_limit(self):
@@ -225,6 +231,9 @@ class Simulation:
         f_x, f_y = motion.virtual_force(s.pos, s.heading, s.is_leader, goal_heading, p, geometry,
                                         goal_weight=goal_weight, sigma=self.spacing(),
                                         align_with=self.alignment(geometry), attraction=self.attraction())
+        extra = self.extra_force()
+        if extra is not None:
+            f_x, f_y = f_x + extra[0], f_y + extra[1]
         u, w = motion.velocity_commands(f_x, f_y, p)
         limit = self.speed_limit()
         if limit is not None:

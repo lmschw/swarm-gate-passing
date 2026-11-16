@@ -139,11 +139,12 @@ change the desired distances (`virtual_force(..., sigma=...)`).
 aligns its heading with, or None for the default (the whole swarm);
 subclasses override it to change the alignment partners
 (`virtual_force(..., align_with=...)`).
-`Simulation.attraction()` returns a per-agent factor on the attraction to
-neighbours (0 keeps only the repulsion), or None for full attraction
+`Simulation.attraction()` returns a factor on the attraction to neighbours
+(0 keeps only the repulsion), per agent or per pair, or None for full attraction
 (`virtual_force(..., attraction=...)`).
 `Simulation.speed_limit()` returns a per-agent cap on the forward speed, or
-None for no cap.
+None for no cap. `Simulation.extra_force()` returns a per-agent body-frame
+force (f_x, f_y) added to the virtual force, or None for none.
 
 `Simulation.next_gate_in_view()` reports, for each gate, whether some agent
 did aim at the next gate before the last agent was through.
@@ -448,6 +449,45 @@ Findings:
   15 of 20 passages instead of 20 of 20, and half the runs never reached
   gate 3. Releasing the squeeze during a passage makes the swarm swing as it
   expands, like the swing after gate leaders are demoted.
+- **Getting all of the swarm through** (centre aim, `gate_sense_range` 6 m,
+  explorers off, rule driving; at 6 m the next gate is in view at the
+  winding courses' sharp turns, see vision_leaders). At baseline 6% of the
+  agents miss some slalom gate and 26% some winding gate. Of the winding
+  misses, 82–100% pass a later gate: about 40% switched to the next gate
+  before the line (its centre was nearer), about 55% dropped their target
+  just before the line (the centre more than 90° off their heading, carried
+  sideways by the swarm), and about 30% touched a post. Three changes,
+  together:
+
+  - **sticky target:** an agent keeps its gate target until it crosses
+    that gate's line, while it senses a post of it (no in-front check, no
+    switch to a later gate);
+  - **loose near gates:** an agent with a gate target within 3.5 m of the
+    gate's centre stops aligning (attraction kept; dropping it too is worse);
+  - **post avoidance:** posts repel agents with the repulsive half of the
+    proximal force, F(d) for d < √2·s, d from the post's surface, s 0.3 m,
+    weighted 3α (via `Simulation.extra_force()`).
+
+  Through each gate, agents through every gate, runs with all 25 through all:
+
+  | | slalom | winding |
+  |---|---|---|
+  | baseline | 100/99/95%, 94%, 2 / 10 | 93/89/92/87/96%, 74%, 0 / 20 |
+  | sticky | 100/100/95%, 94%, 1 / 10 | 97/93/94/92/97%, 83%, 0 / 20 |
+  | loose 3.5 m | 99/99/98%, 96%, 3 / 10 | 98/95/95/90/93%, 83%, 1 / 20 |
+  | sticky + loose | 99/99/97%, 96%, 2 / 10 | 99/97/96/97/98%, 90%, 4 / 20 |
+  | post avoidance | 96/95/92%, 86%, 0 / 10 | 92/87/87/84/81%, 63%, 0 / 20 |
+  | loose + avoidance | 96/100/99%, 96%, 3 / 10 | 96/97/96/93/92%, 82%, 1 / 20 |
+  | sticky + avoidance | 96/95/91%, 87%, 0 / 10 | 94/95/93/92/94%, 77%, 0 / 20 |
+  | all three | 99/100/100%, 99%, 8 / 10 | 99/100/97/99/98%, 94%, 9 / 20 |
+
+  Each change alone helps little or hurts (avoidance alone pushes the
+  crowded swarm off the posts and out of the opening); together they remove
+  about three quarters of the misses. With avoidance at s 0.5–0.7 m every
+  agent gets through every slalom gate in 9–10 of 10 runs, but winding
+  passage falls (92–98% through each gate on average). The remaining winding misses
+  (1.3% of agent-passages) cross the line 0.6–0.9 m outside a post without
+  touching it; a quarter never aimed at that gate.
 - **Random start:** with random headings, 8 of 10 runs still get most of the
   swarm through, even without explorers, because gate 1 is only 4–8 m from the
   start. This setup doesn't test finding a gate that is far away or behind.

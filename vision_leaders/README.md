@@ -186,6 +186,53 @@ points on slaloms and −0.8 ± 1.2 on winding courses (centre rule: −1.6 and
 −4.4). Within this aiming family, the motion model unchanged, the teacher
 has plateaued at about 62% through on the winding suite.
 
+That plateau is set by the sensing range, not the aiming. 19 of the 20
+winding courses break `check_course`'s rule that the next gate's nearer post
+lies within `gate_sense_range` of a point `gate_lookahead` past the previous
+gate (turns above about 35° at 7 m spacing). Of the agents through gate k − 1
+(teachers driving, 4 m range), the tuned teacher gets 95% through gate k when
+the course meets that rule and 60% when it doesn't (centre rule: 89% and
+55%). By turn: 95% after turns below 30°, 79% at 45–60°, 47% at 60–75° and
+12% above 75°. Above 60°, 88% of the misses never came within 4 m of a post
+of the gate (closest median 6.4 m), and in most of these runs no agent in the
+swarm sensed it: the swarm carries on straight past. A longer sensing range
+(teachers driving, motion model unchanged):
+
+| teacher | gate sensing range | slalom: through each gate | runs | winding: through each gate | runs |
+|---|---|---|---|---|---|
+| centre rule | 4 m | 98 / 96 / 91% | 10 / 10 | 98 / 68 / 41 / 30 / 33% | 6 / 20 |
+| | 5 m | 99 / 99 / 91% | 10 / 10 | 98 / 90 / 76 / 73 / 68% | 14 / 20 |
+| | 6 m | 100 / 99 / 95% | 10 / 10 | 93 / 89 / 92 / 87 / 96% | 20 / 20 |
+| | 8 m | 100 / 92 / 94% | 10 / 10 | 85 / 79 / 85 / 77 / 98% | 20 / 20 |
+| tuned aiming, G 4, β 0.5 | 4 m | 98 / 96 / 93% | 10 / 10 | 99 / 73 / 52 / 49 / 38% | 7 / 20 |
+| | 5 m | 100 / 98 / 93% | 10 / 10 | 99 / 95 / 86 / 81 / 88% | 17 / 20 |
+| | 6 m | 100 / 98 / 96% | 10 / 10 | 93 / 90 / 91 / 88 / 96% | 20 / 20 |
+| | 8 m | 100 / 92 / 94% | 10 / 10 | 86 / 81 / 85 / 80 / 96% | 20 / 20 |
+
+The camera is not the limit: at 72 px over 180°, a post (0.3 m across)
+still covers about 1.1 px at 6 m and 0.9 px at 8 m.
+
+A network trained on the centre rule with a 6 m range
+(`models/goalnet_centre90_r6.pt`: `--lone-post-aim centre --sense-range 6
+--max-turn 90 --duration 450`; the training courses stay those of the 4 m
+range; about 50 min) keeps up with it: offline 99.2% lead agreement, bearing
+error median 1.2°, 90th percentile 3.7° (`models/train_centre90_r6.log`).
+Evaluated with `--sense-range 6` (which only changes the rule's runs):
+
+| suite | perception | through each gate | runs with > 50% through all |
+|---|---|---|---|
+| default slalom | centre rule, 6 m | 100 / 99 / 95% | 10 / 10 |
+| | `goalnet_centre90_r6_bc.pt` (behaviour cloning only) | 100 / 98 / 94% | 10 / 10 |
+| | `goalnet_centre90_r6.pt` | 100 / 98 / 93% | 10 / 10 |
+| winding, 7 m | centre rule, 6 m | 93 / 89 / 92 / 87 / 96% | 20 / 20 |
+| | `goalnet_centre90_r6_bc.pt` | 93 / 90 / 93 / 86 / 91% | 19 / 20 |
+| | `goalnet_centre90_r6.pt` | 94 / 92 / 94 / 86 / 91% | 19 / 20 |
+
+On the winding suite that is 91% through on average (teacher 91%,
+`goalnet_aim90.pt` 60%, `goalnet.pt` 49%). DAgger adds little here: with
+the next gate in view, the teacher-driven states already cover what the
+network meets.
+
 | suite | perception | through each gate | runs with > 50% through all |
 |---|---|---|---|
 | default slalom | centre rule | 98 / 96 / 91% | 10 / 10 |
@@ -280,6 +327,11 @@ python -m vision_leaders.evolve --out models/aim_evolved.json --courses 12   # ~
 python -m vision_leaders.evolve --out models/aim_evolved_fixed.json --popsize 10 --courses 16 \
     --fix goal_gain=4 --fix beta=0.5 --init models/aim_evolved_default_motion.json
 python -m vision_leaders.train --out models/goalnet_aim.pt --aim models/aim_evolved_default_motion.json
+python -m vision_leaders.train --out models/goalnet_centre90_r6.pt --lone-post-aim centre --sense-range 6 \
+    --max-turn 90 --duration 450
+python -m vision_leaders.evaluate models/goalnet_centre90_r6.pt --rules centre --sense-range 6
+python -m vision_leaders.run --model models/goalnet_centre90_r6.pt --lone-post-aim centre --sense-range 6 \
+    --course winding --gates 5 --gate-spacing 7 --seed 10 --duration 600 --video winding10.mp4
 ```
 
 `run.py` builds courses and starts like `emergent_leaders.run` (same seed,
