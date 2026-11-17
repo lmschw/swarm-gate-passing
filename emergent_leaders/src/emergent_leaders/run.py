@@ -46,6 +46,15 @@ def main(argv=None):
     gates.add_argument("--gate-range", type=float, default=None, help="gate post sensing range [m]")
     gates.add_argument("--gate-lookahead", type=float, default=None,
                        help="how far past a gate the swarm's front must see the next gate from [m]")
+    gates.add_argument("--lone-post-aim", choices=["post", "centre"], default="post",
+                       help="aim when one post of a gate is sensed (centre: privileged)")
+    gates.add_argument("--sticky-targets", action="store_true",
+                       help="keep a gate target until crossing that gate's line, while a post of it is sensed")
+    gates.add_argument("--loose-radius", type=float, default=0.0,
+                       help="agents with a gate target this close to its centre stop aligning [m]")
+    gates.add_argument("--post-avoid", type=float, default=0.0, metavar="SIGMA",
+                       help="posts repel agents within sqrt(2) SIGMA of their edge [m]")
+    gates.add_argument("--post-avoid-weight", type=float, default=3.0, help="post avoidance weight, times alpha")
     gates.add_argument("--no-course-check", action="store_true",
                        help="allow courses that break the course rules (e.g. gates out of view of each other)")
 
@@ -69,7 +78,9 @@ def main(argv=None):
     from .simulation import Simulation, grid_swarm
     from . import visualize
 
-    overrides = {"local_alignment": args.local_alignment}
+    overrides = {"local_alignment": args.local_alignment, "lone_post_aim": args.lone_post_aim,
+                 "gate_sticky": args.sticky_targets, "gate_loose_radius": args.loose_radius,
+                 "post_avoid_sigma": args.post_avoid, "post_avoid_weight": args.post_avoid_weight}
     if args.sigma_leader is not None:
         overrides["sigma_leader"] = args.sigma_leader
     if args.gate_range is not None:

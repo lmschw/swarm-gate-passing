@@ -11,7 +11,11 @@ perfect sensing ("full"); --lone-post-aim centre makes agents that sense one
 post of a gate aim at its centre rather than at the post; --aim uses the
 tuned teacher of aiming.py (and its goal_gain and beta) instead.
 --sense-range sets the teacher's gate_sense_range; the training courses stay
-those of the default range.
+those of the default range. The other gate options (options.py) go to the
+teacher and the motion model; with --loose-radius the network also predicts
+whether the agent is near its target gate's centre (network.py). --memory
+gives the network its previous output as input, for --sticky-targets; it
+learns to copy it, so don't (see the README).
 
 1. Behaviour cloning: the teacher drives the swarm on random courses; every
    `every` steps each agent's image is stored with the teacher's label.
@@ -28,7 +32,6 @@ Explorers are off. Images without a teacher target are subsampled
 """
 import argparse
 import math
-from dataclasses import replace
 import pathlib
 import sys
 import time
@@ -44,6 +47,7 @@ from emergent_leaders.gates import max_slalom_spacing, max_spacing
 from .aiming import Aim
 from .camera import CameraParams
 from .network import GoalNet
+from .options import add_gate_options, gate_options
 from .simulation import VisionSimulation
 
 
@@ -71,29 +75,33 @@ def random_scenario(rng, params, max_turn=45.0):
 
 def rollout(seed, net=None, camera=CameraParams(), params=None, duration=300.0, every=20, keep_no_gate=0.3, aim=None,
             max_turn=45.0):
-    """Images and teacher labels from one run: (images uint8, lead bool, bearing float32)."""
+    """Images and teacher labels from one run: (images uint8, previous outputs (n, 3) float32, lead bool,
+    bearing float32, near bool)."""
     params = params or ModelParams(sigma_leader=0.7)
     rng = np.random.default_rng(seed)
     gates, start = random_scenario(rng, params, max_turn)
     sim = VisionSimulation(params=params, state=start, gates=gates, explore=False, seed=seed, camera=camera,
                            net=net, check_course=False, aim=aim)
-    images, lead, bearing = [], [], []
+    images, prev, lead, bearing, near = [], [], [], [], []
     for step in range(round(duration / params.dt)):
         sim.step()
         if step % every == 0:
             keep = sim.teacher_lead | (rng.random(sim.state.n) < keep_no_gate)
             images.append(sim.images[keep])
+            prev.append(sim.prev_input[keep])
             lead.append(sim.teacher_lead[keep])
             bearing.append(sim.teacher_bearing[keep])
-    return np.concatenate(images), np.concatenate(lead), np.concatenate(bearing).astype(np.float32)
+            near.append(sim.teacher_near[keep])
+    return (np.concatenate(images), np.concatenate(prev), np.concatenate(lead),
+            np.concatenate(bearing).astype(np.float32), np.concatenate(near))
 
 
 def _rollout_job(args):
-    seed, net_state, camera, params, duration, aim, max_turn = args
+    seed, net_state, memory, camera, params, duration, aim, max_turn = args
     torch.set_num_threads(1)
     net = None
     if net_state is not None:
-        net = GoalNet(camera)
+        net = new_net(camera, params, memory)
         net.load_state_dict(net_state)
         net.eval()
     return rollout(seed, net, camera, params, duration=duration, aim=aim, max_turn=max_turn)
@@ -103,13 +111,20 @@ def collect(seeds, net=None, camera=CameraParams(), duration=300.0, workers=20, 
     state = None if net is None else {k: v.cpu() for k, v in net.state_dict().items()}
     params = params or ModelParams(sigma_leader=0.7)
     with Pool(workers) as pool:
-        parts = pool.map(_rollout_job, [(s, state, camera, params, duration, aim, max_turn) for s in seeds])
+        parts = pool.map(_rollout_job, [(s, state, getattr(net, "memory", False), camera, params, duration, aim,
+                                         max_turn) for s in seeds])
     return tuple(np.concatenate(x) for x in zip(*parts))
 
 
+def new_net(camera, params, memory=False):
+    """A GoalNet with the near output if the gate options need it."""
+    return GoalNet(camera, memory=memory, near=params.gate_loose_radius > 0)
+
+
 def fit(net, data, epochs=8, batch=512, lr=1e-3, bearing_weight=4.0, seed=0, log=print):
-    """Train on (images, lead, bearing); 10% held out for the reported validation numbers."""
-    images, lead, bearing = (torch.from_numpy(x) for x in data)
+    """Train on (images, previous outputs, lead, bearing, near); 10% held out for the reported
+    validation numbers."""
+    images, prev, lead, bearing, near = (torch.from_numpy(x) for x in data)
     target = torch.stack([torch.sin(bearing), torch.cos(bearing)], dim=1)
     gen = torch.Generator().manual_seed(seed)
     order = torch.randperm(len(lead), generator=gen)
@@ -119,11 +134,14 @@ def fit(net, data, epochs=8, batch=512, lr=1e-3, bearing_weight=4.0, seed=0, log
     bce = nn.BCEWithLogitsLoss()
 
     def loss_on(idx):
-        logit, s, c = net(images[idx])
+        logit, s, c, near_logit = net(images[idx], prev[idx])
         pos = lead[idx]
-        l_lead = bce(logit, pos.float())
+        loss = bce(logit, pos.float())
         err = (torch.stack([s, c], 1)[pos] - target[idx][pos]).pow(2).sum(1)
-        return l_lead + bearing_weight * (err.mean() if pos.any() else 0.0), logit, s, c
+        loss = loss + bearing_weight * (err.mean() if pos.any() else 0.0)
+        if near_logit is not None:
+            loss = loss + bce(near_logit, near[idx].float())
+        return loss, logit, s, c, near_logit
 
     for epoch in range(epochs):
         net.train()
@@ -135,13 +153,16 @@ def fit(net, data, epochs=8, batch=512, lr=1e-3, bearing_weight=4.0, seed=0, log
         train = train[torch.randperm(len(train), generator=gen)]
         net.eval()
         with torch.no_grad():
-            loss, logit, s, c = loss_on(val)
+            loss, logit, s, c, near_logit = loss_on(val)
             pos = lead[val]
             acc = ((logit > 0) == pos).float().mean().item()
             err = torch.atan2(s, c)[pos] - bearing[val][pos]
             err = torch.rad2deg(torch.abs((err + math.pi) % (2 * math.pi) - math.pi))
+            near_acc = "" if near_logit is None else \
+                f", near accuracy {100 * ((near_logit > 0) == near[val]).float().mean().item():.1f}%"
         log(f"  epoch {epoch + 1}: val loss {loss.item():.3f}, lead accuracy {100 * acc:.1f}%, "
-            f"bearing error median {err.median().item():.1f} deg, 90th pct {err.quantile(0.9).item():.1f} deg")
+            f"bearing error median {err.median().item():.1f} deg, 90th pct {err.quantile(0.9).item():.1f} deg"
+            + near_acc)
     return net
 
 
@@ -158,7 +179,8 @@ def main(argv=None):
                         help="teacher's aim when it senses one post of a gate")
     parser.add_argument("--aim", default=None, help="tuned teacher (JSON from evolve.py) instead of the rule")
     parser.add_argument("--max-turn", type=float, default=45.0, help="largest turn of the winding training courses [deg]")
-    parser.add_argument("--sense-range", type=float, default=None, help="teacher's gate_sense_range [m]")
+    parser.add_argument("--memory", action="store_true", help="previous output as an input (learns to copy it)")
+    add_gate_options(parser)
     args = parser.parse_args(argv)
     sys.stdout.reconfigure(line_buffering=True)   # progress shows up in redirected logs
 
@@ -166,15 +188,14 @@ def main(argv=None):
     camera = CameraParams()
     aim = Aim.load(args.aim) if args.aim else None
     params = aim.model_params() if aim else ModelParams(sigma_leader=0.7, lone_post_aim=args.lone_post_aim)
-    if args.sense_range is not None:
-        params = replace(params, gate_sense_range=args.sense_range)
+    params = gate_options(params, args)
     t0 = time.time()
     data = collect(range(args.bc_runs), camera=camera, duration=args.duration, workers=args.workers, params=params,
                    aim=aim, max_turn=args.max_turn)
-    print(f"behaviour cloning: {len(data[1])} images, {100 * data[1].mean():.0f}% with a gate target "
+    print(f"behaviour cloning: {len(data[2])} images, {100 * data[2].mean():.0f}% with a gate target "
           f"({time.time() - t0:.0f} s)")
     out = pathlib.Path(args.out)
-    net = fit(GoalNet(camera), data, epochs=args.epochs)
+    net = fit(new_net(camera, params, args.memory), data, epochs=args.epochs)
     net.save(out.with_stem(out.stem + "_bc"))
     seed = args.bc_runs
     for it in range(args.dagger_iters):
@@ -183,7 +204,7 @@ def main(argv=None):
                       args.max_turn)
         seed += args.dagger_runs
         data = tuple(np.concatenate([a, b]) for a, b in zip(data, new))
-        print(f"DAgger {it + 1}: +{len(new[1])} images, {len(data[1])} in total ({time.time() - t0:.0f} s)")
+        print(f"DAgger {it + 1}: +{len(new[2])} images, {len(data[2])} in total ({time.time() - t0:.0f} s)")
         net = fit(net, data, epochs=max(2, args.epochs // 2))
         net.save(out.with_stem(f"{out.stem}_dagger{it + 1}"))
     net.save(out)

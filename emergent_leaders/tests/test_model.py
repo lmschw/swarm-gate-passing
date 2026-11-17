@@ -34,6 +34,20 @@ def test_neighbours_outside_sensing_range_exert_no_force():
     assert np.all(p_x == 0) and np.all(p_y == 0)
 
 
+def test_per_pair_attraction_drops_only_the_chosen_pairs():
+    # agent 0 between an attracting neighbour (1.5 m ahead) and a repelling one (0.5 m behind)
+    pos = np.array([[0.0, 0.0], [1.5, 0.0], [-0.5, 0.0]])
+    dist, bearing = motion.neighbour_geometry(pos, np.zeros(3), P.sense_range)
+    sigma = np.full(3, P.sigma)
+    full, _ = motion.proximal_control(dist, bearing, sigma, P.epsilon)
+    per_agent, _ = motion.proximal_control(dist, bearing, sigma, P.epsilon, attraction=np.array([0.0, 1.0, 1.0]))
+    pair = np.ones((3, 3))
+    pair[0, 1] = 0.0
+    per_pair, _ = motion.proximal_control(dist, bearing, sigma, P.epsilon, attraction=pair)
+    assert per_pair[0] == pytest.approx(per_agent[0]) and per_pair[0] < full[0]
+    assert per_pair[1:] == pytest.approx(full[1:])
+
+
 def test_bearing_is_in_body_frame():
     pos = np.array([[0.0, 0.0], [0.0, 1.0]])
     _, bearing = motion.neighbour_geometry(pos, np.array([np.pi / 2, 0.0]), P.sense_range)

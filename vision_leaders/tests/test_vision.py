@@ -85,17 +85,53 @@ def test_only_the_camera_teacher_ignores_posts_the_camera_does_not_show(teacher,
 def test_network_outputs_a_probability_and_a_bearing_per_image(tmp_path):
     net = GoalNet(CAM).eval()
     images = np.random.default_rng(0).integers(0, 256, (5, 3, CAM.height, CAM.width), dtype=np.uint8)
-    prob, bearing = net.predict(images)
+    prob, bearing, near = net.predict(images)
+    assert near is None
     assert prob.shape == bearing.shape == (5,)
     assert ((prob >= 0) & (prob <= 1)).all() and (np.abs(bearing) <= math.pi).all()
     net.save(tmp_path / "net.pt")
     np.testing.assert_allclose(GoalNet.load(tmp_path / "net.pt").predict(images)[1], bearing, rtol=1e-6)
 
 
+def test_network_with_memory_and_near_output_round_trips(tmp_path):
+    net = GoalNet(CAM, memory=True, near=True).eval()
+    images = np.random.default_rng(0).integers(0, 256, (4, 3, CAM.height, CAM.width), dtype=np.uint8)
+    prev = np.array([[1.0, 0.5, 0.866], [0.0, 0.0, 0.0]] * 2, dtype=np.float32)
+    prob, bearing, near = net.predict(images, prev)
+    assert prob.shape == bearing.shape == near.shape == (4,)
+    zeroed = net.predict(images, np.zeros_like(prev))
+    assert not np.allclose(zeroed[1], bearing)   # the previous output steers the bearing...
+    np.testing.assert_array_equal(zeroed[0], prob)   # ...but not whether to lead (no copying)
+    np.testing.assert_array_equal(zeroed[2], near)
+    net.save(tmp_path / "net.pt")
+    loaded = GoalNet.load(tmp_path / "net.pt")
+    assert loaded.memory and loaded.near
+    np.testing.assert_allclose(loaded.predict(images, prev)[2], near, rtol=1e-6)
+
+
+def test_previous_output_input_is_the_teachers_last_label_turned_with_the_agent():
+    params = ModelParams(gate_sticky=True, gate_loose_radius=3.5)
+    state = SwarmState.from_poses(np.array([[7.0, 0.0], [-10.0, 0.0]]), np.zeros(2))
+    sim = VisionSimulation(params=params, state=state, gates=[GATE], explore=False, check_course=False)
+    lead, bearing = sim.teacher_lead.copy(), sim.teacher_bearing.copy()
+    assert list(lead) == [True, False] and list(sim.teacher_near) == [True, False]
+    sim.state.heading[:] = 0.2   # the agents turn before the next perception
+    sim.perceive_gates()
+    np.testing.assert_allclose(sim.prev_input[0], [1.0, math.sin(bearing[0] - 0.2), math.cos(bearing[0] - 0.2)],
+                               rtol=1e-6)
+    np.testing.assert_allclose(sim.prev_input[1], 0.0)
+
+
+def test_loose_radius_needs_a_network_with_a_near_output():
+    with pytest.raises(ValueError):
+        VisionSimulation(params=ModelParams(gate_loose_radius=3.5), gates=[GATE], explore=False,
+                         net=GoalNet(CAM).eval(), check_course=False)
+
+
 class _AlwaysLeft(torch.nn.Module):
     """Stands in for GoalNet: always a gate, 30 deg to the left."""
-    def predict(self, images):
-        return np.ones(len(images)), np.full(len(images), math.radians(30))
+    def predict(self, images, prev=None):
+        return np.ones(len(images)), np.full(len(images), math.radians(30)), None
 
 
 def test_network_leaders_aim_along_the_predicted_bearing_at_their_next_gate():
@@ -108,8 +144,8 @@ def test_network_leaders_aim_along_the_predicted_bearing_at_their_next_gate():
 
 class _UnsureLeft(torch.nn.Module):
     """Stands in for GoalNet: 30% sure of a gate, 30 deg to the left."""
-    def predict(self, images):
-        return np.full(len(images), 0.3), np.full(len(images), math.radians(30))
+    def predict(self, images, prev=None):
+        return np.full(len(images), 0.3), np.full(len(images), math.radians(30)), None
 
 
 @pytest.mark.parametrize("weighting, weight", [("threshold", 0.0), ("confidence", 0.3)])

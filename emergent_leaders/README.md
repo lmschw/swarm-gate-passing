@@ -82,7 +82,8 @@ random-walk leaders, so that only gates create leaders.
 A gate is two posts `width` apart, centred on $\mathbf{c}$, with a passing
 direction. The posts are solid discs of radius `post_radius` (0.15 m): an
 agent that would end a step inside one is pushed back onto its edge. Agents do
-not sense posts as obstacles, so they bump into them and slide off.
+not sense posts as obstacles (unless post avoidance is on, below), so they
+bump into them and slide off.
 
 - **Sensing:** an agent senses a post perfectly when it is within
   `gate_sense_range` (4 m). Its **target** depends on how many posts of the
@@ -108,6 +109,20 @@ not sense posts as obstacles, so they bump into them and slide off.
 - **Passages:** an agent passes a gate when it crosses the line between the
   posts in the passing direction. `Simulation.gate_pass_time` records the time
   of each agent's first passage through each gate.
+- **Getting all agents through (optional, off by default):** three changes
+  that together cut the misses by about three quarters (see "Getting all of
+  the swarm through" below):
+  - `gate_sticky` (`--sticky-targets`): an agent keeps its gate target until
+    it crosses that gate's line, as long as it senses a post of it. Neither
+    the in-front check nor a nearer target at the next gate takes it away;
+  - `gate_loose_radius` (`--loose-radius`): an agent with a gate target
+    within this distance of the gate's centre stops aligning (its attraction
+    to its neighbours stays);
+  - `post_avoid_sigma`, `post_avoid_weight` (`--post-avoid`,
+    `--post-avoid-weight`): posts repel agents with the repulsive half of the
+    proximal force, $F(d)$ for $d < \sqrt{2}\,s$ with $s$ = `post_avoid_sigma`
+    and $d$ the distance from the post's edge, weighted
+    `post_avoid_weight` · α (default 3).
 
 **Course rules.** Courses are assumed to keep the next gate in view: while the
 swarm passes a gate, some agent already senses the next one. `Simulation`
@@ -129,7 +144,11 @@ these rules.
 override it to replace the perfect sensing (as
 [`vision_leaders`](../vision_leaders/) does with cameras).
 `gate_targets(..., visible=mask)` applies the rule to only the posts a mask
-marks as visible.
+marks as visible; with `gate_sticky` it also takes each agent's previous
+target and the gates it has passed (`previous=`, `passed=`).
+`Simulation.near_gate()` returns the agents that stop aligning under
+`gate_loose_radius`; subclasses override it when the gate target is not
+known exactly.
 `Simulation.goal_terms()` returns each agent's goal weight γ and goal
 heading for the force; subclasses override it to weight the goal term
 continuously (`virtual_force(..., goal_weight=...)`).
@@ -210,6 +229,15 @@ whose course has a turn of 75° or more usually lose the swarm at that turn.
 python -m emergent_leaders.run --gates 5 --course winding --gate-spacing 7 --no-course-check \
     --start-heading 0 --no-explore --sigma-leader 0.7 --seed 5 --duration 440 \
     --video videos/gates_winding.mp4 --summary videos/gates_winding_summary.png
+```
+
+With all three changes for getting all agents through, at a 6 m gate range
+and aiming at the centre (all 25 agents get through each gate of this run):
+
+```sh
+python -m emergent_leaders.run --gates 3 --start-heading 0 --no-explore --sigma-leader 0.7 \
+    --gate-range 6 --gate-spacing 7 --no-course-check --lone-post-aim centre \
+    --sticky-targets --loose-radius 3.5 --post-avoid 0.3 --seed 0 --duration 320
 ```
 
 From Python:
@@ -481,6 +509,8 @@ Findings:
   | sticky + avoidance | 96/95/91%, 87%, 0 / 10 | 94/95/93/92/94%, 77%, 0 / 20 |
   | all three | 99/100/100%, 99%, 8 / 10 | 99/100/97/99/98%, 94%, 9 / 20 |
 
+  These are now `ModelParams` options (`gate_sticky`, `gate_loose_radius`
+  3.5, `post_avoid_sigma` 0.3, `post_avoid_weight` 3; see Gates above).
   Each change alone helps little or hurts (avoidance alone pushes the
   crowded swarm off the posts and out of the opening); together they remove
   about three quarters of the misses. With avoidance at s 0.5–0.7 m every
@@ -488,6 +518,39 @@ Findings:
   passage falls (92–98% through each gate on average). The remaining winding misses
   (1.3% of agent-passages) cross the line 0.6–0.9 m outside a post without
   touching it; a quarter never aimed at that gate.
+
+  Choosing partners instead of dropping alignment does no better. With the
+  sticky target and post avoidance, the agents within 3.5 m of their gate's
+  centre align with (and optionally are attracted only to) their k nearest
+  neighbours, the agents aiming at the same gate, or the neighbours in
+  front (within 90° of their heading). Agents through every gate, runs with
+  all 25 through all, slalom / winding:
+
+  | near-gate partners | alignment only | alignment and attraction | attraction only (no alignment) |
+  |---|---|---|---|
+  | whole swarm | 87%, 0 / 10; 77%, 0 / 20 (baseline) | | 99%, 8 / 10; 94%, 9 / 20 |
+  | 1 nearest | 99%, 8 / 10; 90%, 8 / 20 | 92%, 0 / 10; 77%, 0 / 20 | 94%, 2 / 10; 77%, 1 / 20 |
+  | 2 nearest | 98%, 5 / 10; 90%, 3 / 20 | 93%, 0 / 10; 79%, 0 / 20 | 94%, 2 / 10; 81%, 0 / 20 |
+  | 3 nearest | 98%, 6 / 10; 89%, 2 / 20 | 94%, 0 / 10; 77%, 0 / 20 | 96%, 2 / 10; 79%, 0 / 20 |
+  | 5 nearest | 98%, 5 / 10; 87%, 3 / 20 | 95%, 2 / 10; 82%, 2 / 20 | 99%, 8 / 10; 89%, 4 / 20 |
+  | 8 nearest | | 96%, 3 / 10; 87%, 1 / 20 | 99%, 8 / 10; 93%, 5 / 20 |
+  | same gate | 97%, 5 / 10; 88%, 2 / 20 | 97%, 4 / 10; 76%, 1 / 20 | 99%, 7 / 10; 76%, 1 / 20 |
+  | in front | 95%, 4 / 10; 90%, 2 / 20 | 90%, 1 / 10; 77%, 0 / 20 | 94%, 0 / 10; 83%, 0 / 20 |
+  | same gate, in front | 96%, 5 / 10; 90%, 3 / 20 | 90%, 0 / 10; 64%, 0 / 20 | 94%, 1 / 10; 64%, 0 / 20 |
+  | none | 99%, 8 / 10; 94%, 9 / 20 | | |
+
+  ("Attraction only" with the whole swarm is no near-gate alignment with full
+  attraction, the best variant above.) Cohesion isn't what dropping
+  alignment costs: with no near-gate alignment, at most 0.2 agents on
+  average are outside the main group (connected within the 2 m sensing
+  range) at any time, against 0–0.1 with alignment, and the last gate's
+  median passage comes 5% later (397 s instead of 379 s on the winding
+  courses). Restricting attraction is worse the fewer partners are left:
+  it separates agents (up to 5 on average with same-gate agents in front)
+  and gets fewer through; 8 nearest neighbours, nearly everyone within the
+  2 m sensing range, does as well as full attraction. Attraction to the
+  whole neighbourhood is what holds the near-gate agents inside the
+  opening.
 - **Random start:** with random headings, 8 of 10 runs still get most of the
   swarm through, even without explorers, because gate 1 is only 4–8 m from the
   start. This setup doesn't test finding a gate that is far away or behind.

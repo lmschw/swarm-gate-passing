@@ -1,0 +1,25 @@
+behaviour cloning: 315148 images, 82% with a gate target (668 s)
+  epoch 1: val loss 0.335, lead accuracy 96.4%, bearing error median 1.5 deg, 90th pct 6.8 deg, near accuracy 94.3%
+  epoch 2: val loss 0.230, lead accuracy 97.0%, bearing error median 1.7 deg, 90th pct 3.3 deg, near accuracy 95.1%
+  epoch 3: val loss 0.197, lead accuracy 97.5%, bearing error median 2.0 deg, 90th pct 2.9 deg, near accuracy 95.5%
+  epoch 4: val loss 0.155, lead accuracy 97.9%, bearing error median 0.8 deg, 90th pct 1.6 deg, near accuracy 96.8%
+  epoch 5: val loss 0.141, lead accuracy 98.1%, bearing error median 0.9 deg, 90th pct 2.1 deg, near accuracy 97.3%
+  epoch 6: val loss 0.149, lead accuracy 97.6%, bearing error median 1.0 deg, 90th pct 2.0 deg, near accuracy 96.7%
+  epoch 7: val loss 0.117, lead accuracy 98.4%, bearing error median 0.9 deg, 90th pct 1.7 deg, near accuracy 97.7%
+  epoch 8: val loss 0.122, lead accuracy 97.9%, bearing error median 0.6 deg, 90th pct 1.2 deg, near accuracy 97.8%
+DAgger 1: +81913 images, 397061 in total (552 s)
+  epoch 1: val loss 0.202, lead accuracy 96.2%, bearing error median 0.9 deg, 90th pct 4.2 deg, near accuracy 97.8%
+  epoch 2: val loss 0.183, lead accuracy 96.3%, bearing error median 1.8 deg, 90th pct 4.0 deg, near accuracy 98.1%
+  epoch 3: val loss 0.170, lead accuracy 96.3%, bearing error median 0.8 deg, 90th pct 3.1 deg, near accuracy 98.3%
+  epoch 4: val loss 0.164, lead accuracy 96.4%, bearing error median 0.9 deg, 90th pct 3.1 deg, near accuracy 98.3%
+DAgger 2: +181975 images, 579036 in total (549 s)
+  epoch 1: val loss 0.978, lead accuracy 96.3%, bearing error median 3.9 deg, 90th pct 32.4 deg, near accuracy 94.3%
+  epoch 2: val loss 0.920, lead accuracy 96.4%, bearing error median 4.0 deg, 90th pct 29.5 deg, near accuracy 94.4%
+  epoch 3: val loss 0.885, lead accuracy 96.6%, bearing error median 3.9 deg, 90th pct 28.2 deg, near accuracy 94.6%
+  epoch 4: val loss 0.864, lead accuracy 96.4%, bearing error median 3.9 deg, 90th pct 27.4 deg, near accuracy 94.6%
+DAgger 3: +156902 images, 735938 in total (559 s)
+  epoch 1: val loss 0.840, lead accuracy 97.1%, bearing error median 3.7 deg, 90th pct 27.6 deg, near accuracy 95.0%
+  epoch 2: val loss 0.827, lead accuracy 97.2%, bearing error median 3.9 deg, 90th pct 26.3 deg, near accuracy 95.2%
+  epoch 3: val loss 0.810, lead accuracy 97.2%, bearing error median 3.7 deg, 90th pct 26.4 deg, near accuracy 95.3%
+  epoch 4: val loss 0.803, lead accuracy 97.3%, bearing error median 3.7 deg, 90th pct 25.7 deg, near accuracy 95.3%
+model -> models/goalnet_r6_gateopts.pt

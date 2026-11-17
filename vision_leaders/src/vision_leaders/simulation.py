@@ -38,10 +38,20 @@ net_bearing.
 A network leader's gate_target is bookkeeping only: the first gate the agent
 has not passed yet. Its posts_seen is 2 (the network doesn't say how many
 posts it saw).
+
+The gate options of emergent_leaders' ModelParams:
+- gate_sticky: the teacher keeps its own previous targets (teacher_target).
+  A network with memory gets its previous output as input (prev_input, see
+  network.py): the teacher's previous labels while the teacher drives, its
+  own while it drives;
+- gate_loose_radius: teacher_near labels the agents near their target
+  gate's centre. Network leaders stop aligning when the network's near
+  output reaches 0.5, so the network must have one;
+- post_avoid_sigma: motion only, as in emergent_leaders.
 """
 import numpy as np
 
-from emergent_leaders import Simulation
+from emergent_leaders import ModelParams, Simulation
 from emergent_leaders.gates import gate_targets
 
 from .aiming import aim_targets
@@ -64,8 +74,15 @@ class VisionSimulation(Simulation):
             raise ValueError(f"goal_weighting must be one of {GOAL_WEIGHTINGS}, got {goal_weighting!r}")
         if goal_weighting == "confidence" and net is None:
             raise ValueError("goal_weighting='confidence' needs a network")
+        params = kwargs.get("params") or ModelParams()
+        if net is not None and params.gate_loose_radius and not getattr(net, "near", False):
+            raise ValueError("gate_loose_radius needs a network with a near output")
+        if aim is not None and params.gate_sticky:
+            raise ValueError("the tuned teacher (aim) has no sticky targets")
         self.goal_weighting = goal_weighting
         self.aim = aim
+        self.teacher_target = None
+        self._last = None   # (lead, bearing, heading) of the last output, for prev_input
         self.camera = camera
         self.net = net
         self.teacher = teacher
@@ -74,29 +91,50 @@ class VisionSimulation(Simulation):
         super().__init__(*args, **kwargs)
 
     def perceive_gates(self):
-        s = self.state
-        self.images, self.post_visibility = render(s.pos, s.heading, self.gates, self.params.post_radius, self.camera)
+        s, p = self.state, self.params
+        if self._last is None:
+            self.prev_input = np.zeros((s.n, 3), dtype=np.float32)
+        else:
+            lead, bearing, heading = self._last
+            turned = bearing - _wrap(s.heading - heading)
+            self.prev_input = np.column_stack([lead, lead * np.sin(turned), lead * np.cos(turned)]).astype(np.float32)
+        self.images, self.post_visibility = render(s.pos, s.heading, self.gates, p.post_radius, self.camera)
         visible = self.post_visibility >= self.visible_threshold if self.teacher == "camera" else None
         if self.aim is None:
-            teacher = gate_targets(s.pos, s.heading, self.gates, self.params, visible=visible)
+            teacher = gate_targets(s.pos, s.heading, self.gates, p, visible=visible, previous=self.teacher_target,
+                                   passed=np.isfinite(self.gate_pass_time))
         else:
-            teacher = aim_targets(s.pos, s.heading, self.gates, self.params, self.aim, visible=visible)
+            teacher = aim_targets(s.pos, s.heading, self.gates, p, self.aim, visible=visible)
+        self.teacher_target = teacher[0]
         to_target = teacher[2] - s.pos
         self.teacher_lead = teacher[0] >= 0
         self.teacher_bearing = np.where(self.teacher_lead,
                                         _wrap(np.arctan2(to_target[:, 1], to_target[:, 0]) - s.heading), 0.0)
+        self.teacher_near = np.zeros(s.n, dtype=bool)
+        if p.gate_loose_radius and self.gates:
+            centres = np.array([g.centre for g in self.gates])
+            d = np.linalg.norm(s.pos - centres[np.maximum(teacher[0], 0)], axis=1)
+            self.teacher_near = self.teacher_lead & (d < p.gate_loose_radius)
         if self.net is None:
+            self._last = (self.teacher_lead.astype(float), self.teacher_bearing, s.heading.copy())
             return teacher
 
-        prob, bearing = self.net.predict(self.images)
-        self.net_prob, self.net_bearing = prob, bearing
+        prob, bearing, near = self.net.predict(self.images, self.prev_input if getattr(self.net, "memory", False)
+                                               else None)
+        self.net_prob, self.net_bearing, self.net_near = prob, bearing, near
         lead = prob >= self.lead_threshold
+        self._last = (lead.astype(float), np.where(lead, bearing, 0.0), s.heading.copy())
         direction = s.heading + bearing
         self.net_goal_heading = direction
         target = np.where(lead[:, None], s.pos + np.column_stack([np.cos(direction), np.sin(direction)]), np.nan)
         not_passed = np.isnan(self.gate_pass_time)
         next_gate = np.where(not_passed.any(axis=0), not_passed.argmax(axis=0), len(self.gates) - 1)
         return np.where(lead, next_gate, -1), np.where(lead, 2, 0), target
+
+    def near_gate(self):
+        if self.net is None or not self.params.gate_loose_radius:
+            return super().near_gate()
+        return (self.state.gate_target >= 0) & (self.net_near >= 0.5)
 
     def goal_terms(self):
         weight, goal_heading = super().goal_terms()

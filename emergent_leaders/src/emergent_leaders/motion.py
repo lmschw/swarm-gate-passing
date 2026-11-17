@@ -97,6 +97,20 @@ def virtual_force(pos, heading, is_leader, goal_heading, params, geometry=None, 
     return f_x, f_y
 
 
+def post_avoidance(pos, heading, posts, params):
+    """Body-frame (f_x, f_y) pushing each agent away from posts (m, 2): the
+    repulsive half of the proximal force, -epsilon (2 s^4 / d^5 - s^2 / d^3)
+    for d < sqrt(2) s with s = post_avoid_sigma and d the distance from the
+    post's edge, weighted post_avoid_weight * alpha."""
+    s = params.post_avoid_sigma
+    diff = posts[None, :, :] - pos[:, None, :]
+    d = np.maximum(np.hypot(diff[..., 0], diff[..., 1]) - params.post_radius, 0.02)
+    magnitude = np.minimum(-params.epsilon * (2.0 * s**4 / d**5 - s**2 / d**3), 0.0)
+    bearing = wrap_to_pi(np.arctan2(diff[..., 1], diff[..., 0]) - heading[:, None])
+    k = params.post_avoid_weight * params.alpha
+    return k * np.sum(magnitude * np.cos(bearing), axis=1), k * np.sum(magnitude * np.sin(bearing), axis=1)
+
+
 def velocity_commands(f_x, f_y, params):
     u = np.clip(params.k1 * f_x + params.u_c, 0.0, params.u_max)
     w = np.clip(params.k2 * f_y, -params.w_max, params.w_max)

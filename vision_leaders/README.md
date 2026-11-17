@@ -69,6 +69,11 @@ probability q itself weights the goal term instead: every agent pulls along
 its predicted bearing with γ = q, in f = αp + βh + Gγg. Agents with q ≥ 0.5
 still count as leaders (spacing, statistics, video).
 
+Optional, for the `emergent_leaders` gate options (see Results): `near=True`
+adds the logit of "within `gate_loose_radius` of the target gate's centre",
+where agents stop aligning; `memory=True` feeds the previous output to the
+bearing (not recommended: the network learns to copy it).
+
 ## Training (`train.py`)
 
 1. **Behaviour cloning:** the full rule drives the swarm on 40 random courses
@@ -233,6 +238,60 @@ On the winding suite that is 91% through on average (teacher 91%,
 the next gate in view, the teacher-driven states already cover what the
 network meets.
 
+**Getting all of the swarm through.** Gate fractions hide that only 74% of
+the agents pass every gate with the 6 m centre rule, and in none of the 20
+winding runs do all 25 (`evaluate.py` now reports both). The `emergent_leaders`
+gate options (sticky targets, loose alignment within 3.5 m of the target gate's
+centre, post avoidance; see its README) raise the rule to 94% and 9 / 20.
+`options.py` passes them to `train.py`, `evaluate.py` and `run.py`
+(`--sticky-targets --loose-radius 3.5 --post-avoid 0.3`). With
+`--loose-radius`, the network gets a fourth output, the probability of being
+near its target gate's centre; network agents stop aligning when it reaches
+0.5. `goalnet_r6_gateopts.pt` was trained on that teacher (otherwise as
+`goalnet_centre90_r6.pt`; 65 min): offline 98.6% lead agreement, bearing error
+median 2.1°, 90th percentile 9.9°, near accuracy 97.7%
+(`models/train_r6_gateopts.log`, `models/eval_r6_gateopts.log`):
+
+| suite | perception | through each gate | runs with > 50% through all | agents through every gate | runs with all 25 |
+|---|---|---|---|---|---|
+| default slalom | centre rule, with the options | 99 / 100 / 100% | 10 / 10 | 99% | 8 / 10 |
+| | `goalnet_r6_gateopts_bc.pt` | 98 / 100 / 100% | 10 / 10 | 98% | 5 / 10 |
+| | `goalnet_r6_gateopts.pt` | 99 / 100 / 100% | 10 / 10 | 99% | 7 / 10 |
+| winding, 7 m | centre rule, 6 m, no options | 93 / 89 / 92 / 87 / 96% | 20 / 20 | 74% | 0 / 20 |
+| | `goalnet_centre90_r6.pt`, no options | 94 / 92 / 94 / 86 / 91% | 19 / 20 | 75% | 0 / 20 |
+| | centre rule, with the options | 99 / 100 / 97 / 99 / 98% | 20 / 20 | 94% | 9 / 20 |
+| | `goalnet_r6_gateopts_bc.pt` | 96 / 94 / 79 / 82 / 72% | 15 / 20 | 63% | 0 / 20 |
+| | `goalnet_r6_gateopts.pt` | 98 / 99 / 96 / 88 / 82% | 17 / 20 | 77% | 3 / 20 |
+| | `goalnet_r6_gateopts.pt`, the teacher's near flag | 98 / 99 / 98 / 99 / 95% | – | 89% | 4 / 20 |
+| | `goalnet_r6_gateopts.pt`, never loose | 93 / 90 / 89 / 86 / 78% | – | 65% | 0 / 20 |
+
+(`goalnet_centre90_r6.pt` with sticky targets and post avoidance but no loose
+alignment, which it can't predict: 66%, 0 / 20.) On the slalom the network
+keeps up with its teacher. On the winding suite it falls behind at the later
+gates, and the near output is most of the gap: with the teacher's exact near
+flag (the network still choosing lead and bearing) it gets 89% of the agents
+through every gate, without loose alignment 65%. In closed loop the network
+and the teacher agree on only 86% of the agent-steps either of them flags as
+near (97.7% offline, over all images). DAgger matters here (63% → 77%).
+Per course, the network's 77% is two kinds of run: in 17 of 20, 19–25 agents
+pass every gate (all 25 on seeds 6, 9 and 17); in 3 (seeds 11, 12, 19) the
+whole swarm misses gate 4 or 5.
+
+Sticky targets need a memory the image doesn't have, so the network can take
+its previous output as an input (`GoalNet(memory=True)`, `train.py
+--memory`): its previous lead and bearing, the bearing turned by how far the
+agent has turned since. It learns to copy it. The teacher's lead almost never
+changes from one step to the next, and its bearing is almost exactly the
+previous one turned, so copying fits the data (offline 99.9% lead agreement,
+bearing error median 1.0°) but never starts a lead: behaviour cloning alone
+got no agent through any gate. Feeding the memory only to the bearing (as now)
+didn't help, since the bearing at the start of a lead (memory zero) stays
+poorly trained, off by about 25°, and the network then copies its own error
+(after DAgger, winding 59% through every gate, 3 / 20; models
+`goalnet_r6_gateopts_memory*.pt`). Without memory the network leads from what
+it sees; it can't keep a target whose posts it no longer sees well, which so
+far doesn't show.
+
 | suite | perception | through each gate | runs with > 50% through all |
 |---|---|---|---|
 | default slalom | centre rule | 98 / 96 / 91% | 10 / 10 |
@@ -332,6 +391,13 @@ python -m vision_leaders.train --out models/goalnet_centre90_r6.pt --lone-post-a
 python -m vision_leaders.evaluate models/goalnet_centre90_r6.pt --rules centre --sense-range 6
 python -m vision_leaders.run --model models/goalnet_centre90_r6.pt --lone-post-aim centre --sense-range 6 \
     --course winding --gates 5 --gate-spacing 7 --seed 10 --duration 600 --video winding10.mp4
+G="--sense-range 6 --sticky-targets --loose-radius 3.5 --post-avoid 0.3"
+python -m vision_leaders.train --out models/goalnet_r6_gateopts.pt --lone-post-aim centre --max-turn 90 \
+    --duration 450 $G
+python -m vision_leaders.evaluate models/goalnet_r6_gateopts.pt --rules centre $G
+python -m vision_leaders.run --model models/goalnet_r6_gateopts.pt --lone-post-aim centre $G \
+    --course winding --gates 5 --gate-spacing 7 --seed 9 --duration 430 --camera-agent 14 \
+    --video models/goalnet_r6_gateopts_winding9.mp4   # 25 / 25 through every gate
 ```
 
 `run.py` builds courses and starts like `emergent_leaders.run` (same seed,

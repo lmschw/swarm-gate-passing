@@ -7,7 +7,7 @@ import pytest
 
 from emergent_leaders import (FixedGoal, Gate, ModelParams, Simulation, SwarmState, grid_swarm, random_turns,
                               slalom_course, winding_course)
-from emergent_leaders import gates
+from emergent_leaders import gates, motion
 
 P = ModelParams()
 GATE = Gate(centre=(10.0, 0.0), heading=0.0, width=4.0)
@@ -124,6 +124,52 @@ def test_posts_marked_invisible_are_not_sensed():
     assert (g[0], n[0]) == (0, 1)
     np.testing.assert_allclose(aim[0], GATE.posts[0])
     assert gates.gate_targets(pos, heading, [GATE], P, visible=np.zeros((1, 1, 2), bool))[0][0] == -1
+
+
+def test_sticky_target_survives_until_the_gate_line_is_crossed():
+    params = replace(P, gate_sticky=True, lone_post_aim="centre")
+    nxt = Gate((12.5, 0.0), 0.0, 4.0)
+    # turned away from the centre (> 90 deg off) and with the next gate's centre nearer
+    pos, heading = np.array([[9.5, 1.5]]), np.array([math.radians(100)])
+    none_passed = np.zeros((2, 1), bool)
+    assert gates.gate_targets(pos, heading, [GATE, nxt], replace(params, gate_sticky=False),
+                              previous=np.array([0]), passed=none_passed)[0][0] != 0
+    g, n, aim = gates.gate_targets(pos, heading, [GATE, nxt], params, previous=np.array([0]), passed=none_passed)
+    assert (g[0], n[0]) == (0, 2)
+    np.testing.assert_allclose(aim[0], GATE.centre)
+    # not once the gate is passed, nor past its line, nor without a previous target there
+    assert gates.gate_targets(pos, heading, [GATE, nxt], params, previous=np.array([0]),
+                              passed=np.array([[True], [False]]))[0][0] != 0
+    assert gates.gate_targets(np.array([[10.5, 1.5]]), heading, [GATE, nxt], params, previous=np.array([0]),
+                              passed=none_passed)[0][0] != 0
+    assert gates.gate_targets(pos, heading, [GATE, nxt], params, previous=np.array([-1]),
+                              passed=none_passed)[0][0] != 0
+
+
+def test_agents_near_their_gate_stop_aligning():
+    params = replace(P, gate_loose_radius=3.5)
+    # agent 0 aims at the gate 2 m before its centre, agent 1 is out of range
+    state = SwarmState.from_poses(np.array([[8.0, 0.0], [3.0, 0.0], [3.0, 1.0]]), np.zeros(3))
+    sim = Simulation(params=params, state=state, gates=[GATE], explore=False, check_course=False)
+    assert list(sim.state.gate_target) == [0, -1, -1]
+    mask = sim.alignment(sim._geometry())
+    assert not mask[0].any() and mask[1:].all()
+    assert Simulation(params=P, state=state, gates=[GATE], explore=False,
+                      check_course=False).alignment(sim._geometry()) is None
+
+
+def test_post_avoidance_pushes_agents_away_from_close_posts_only():
+    params = replace(P, post_avoid_sigma=0.3)
+    post = GATE.posts[0]
+    pos = np.array([post - [0.4, 0.0], post - [1.0, 0.0]])   # 0.25 m and 0.85 m from its edge, facing it
+    f_x, f_y = motion.post_avoidance(pos, np.zeros(2), np.array([post]), params)
+    assert f_x[0] < 0 and f_y[0] == pytest.approx(0.0, abs=1e-9)
+    assert f_x[1] == 0.0 and f_y[1] == 0.0
+    sim = Simulation(params=params, state=SwarmState.from_poses(pos, np.zeros(2)), gates=[GATE], explore=False,
+                     check_course=False)
+    np.testing.assert_allclose(sim.extra_force(), (f_x, f_y))
+    assert Simulation(params=P, state=SwarmState.from_poses(pos, np.zeros(2)), gates=[GATE], explore=False,
+                      check_course=False).extra_force() is None
 
 
 def test_agents_are_pushed_out_of_posts():

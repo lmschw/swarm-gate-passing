@@ -8,7 +8,6 @@ Courses and starts are built like emergent_leaders.run's (same --seed, same
 course). Explorers are off.
 """
 import argparse
-from dataclasses import replace
 
 import matplotlib
 import numpy as np
@@ -16,6 +15,7 @@ import numpy as np
 from emergent_leaders import ModelParams
 
 from .courses import course, start
+from .options import add_gate_options, gate_options
 from .simulation import GOAL_WEIGHTINGS, TEACHERS, VisionSimulation
 
 
@@ -32,7 +32,6 @@ def main(argv=None):
     parser.add_argument("--lone-post-aim", choices=["post", "centre"], default="post",
                         help="the rule's aim when it senses one post of a gate")
     parser.add_argument("--aim", default=None, help="tuned teacher (JSON from evolve.py) instead of the rule")
-    parser.add_argument("--sense-range", type=float, default=None, help="the rule's gate_sense_range [m]")
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--gates", type=int, default=3)
     parser.add_argument("--course", choices=["slalom", "winding"], default="slalom")
@@ -43,6 +42,7 @@ def main(argv=None):
     parser.add_argument("--video", default=None, help="MP4 with one agent's camera inset")
     parser.add_argument("--camera-agent", type=int, default=0, help="agent whose camera the video shows")
     parser.add_argument("--fps", type=int, default=30)
+    add_gate_options(parser)
     args = parser.parse_args(argv)
 
     matplotlib.use("Agg")
@@ -60,8 +60,7 @@ def main(argv=None):
         aim = Aim.load(args.aim)
     params = (aim.model_params(ModelParams(sigma_leader=args.sigma_leader)) if aim
               else ModelParams(sigma_leader=args.sigma_leader, lone_post_aim=args.lone_post_aim))
-    if args.sense_range is not None:
-        params = replace(params, gate_sense_range=args.sense_range)
+    params = gate_options(params, args)
     gates = course(args.course, args.gates, args.seed, args.gate_spacing, args.max_turn, params)
     kwargs = {} if net is None else {"camera": net.cam}
     sim = VisionSimulation(params=params, state=start(args.seed, heading_deg=args.start_heading), gates=gates,

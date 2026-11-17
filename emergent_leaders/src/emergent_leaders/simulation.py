@@ -131,6 +131,7 @@ class Simulation:
         self.leader_type = leader_type
         self.explore = explore
         self.gates = tuple(gates)
+        self._posts = np.array([p for g in self.gates for p in g.posts]).reshape(-1, 2)
         if check_course:
             gates_mod.check_course(self.gates, self.params.gate_sense_range, self.params.gate_lookahead)
         self.rng = np.random.default_rng(seed)
@@ -187,7 +188,18 @@ class Simulation:
         """What each agent aims for, as gates.gate_targets returns it. Override
         to replace the perfect sensing within gate_sense_range."""
         s = self.state
-        return gates_mod.gate_targets(s.pos, s.heading, self.gates, self.params)
+        return gates_mod.gate_targets(s.pos, s.heading, self.gates, self.params, previous=s.gate_target,
+                                      passed=np.isfinite(self.gate_pass_time))
+
+    def near_gate(self):
+        """Agents with a gate target within gate_loose_radius of that gate's
+        centre; they stop aligning. Override to decide it otherwise."""
+        s, r = self.state, self.params.gate_loose_radius
+        if not r or not self.gates:
+            return np.zeros(s.n, dtype=bool)
+        centres = np.array([g.centre for g in self.gates])
+        d = np.linalg.norm(s.pos - centres[np.maximum(s.gate_target, 0)], axis=1)
+        return (s.gate_target >= 0) & (d < r)
 
     def goal_terms(self):
         """(gamma, goal heading) per agent for the goal term of the virtual
@@ -203,8 +215,14 @@ class Simulation:
     def alignment(self, geometry):
         """(n, n) bool mask of the agents each agent aligns its heading with,
         or None for the params' rule (whole swarm, or sensed neighbours with
-        local_alignment). Override to change it."""
-        return None
+        local_alignment). Agents near_gate align with nobody. Override to
+        change it."""
+        loose = self.near_gate()
+        if not loose.any():
+            return None
+        mask = np.isfinite(geometry[0]) if self.params.local_alignment else np.ones((self.state.n,) * 2, bool)
+        mask[loose] = False
+        return mask
 
     def attraction(self):
         """Factor on the attraction to neighbours (0 keeps only the
@@ -214,8 +232,11 @@ class Simulation:
 
     def extra_force(self):
         """Per-agent (f_x, f_y) in the body frame added to the virtual force,
-        or None for none. Override to add a force term."""
-        return None
+        or None for none: post avoidance if post_avoid_sigma > 0. Override to
+        add a force term."""
+        if not self.params.post_avoid_sigma or not len(self._posts):
+            return None
+        return motion.post_avoidance(self.state.pos, self.state.heading, self._posts, self.params)
 
     def speed_limit(self):
         """Per-agent cap on the forward speed (below u_max), or None for no

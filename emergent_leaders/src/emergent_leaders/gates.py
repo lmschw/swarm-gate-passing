@@ -23,6 +23,10 @@ is through (or beside) the gate and aims for nothing. An agent with targets at
 two gates aims for the nearer target: the gate it is about to pass, and, once
 that gate's centre is behind it, the next one.
 
+With gate_sticky, an agent keeps its previous gate target until it crosses
+that gate's line, as long as it senses a post of it: neither the in-front
+check nor a nearer target at the next gate takes it away.
+
 Courses (check_course) must let the swarm see the next gate while it passes a
 gate: a post of gate k+1 must lie within gate_sense_range of the point
 gate_lookahead straight past gate k's centre, where the front of a passing
@@ -105,22 +109,29 @@ def _in_front(pos, heading, target, half_angle):
     return np.abs((bearing + np.pi) % (2.0 * np.pi) - np.pi) <= half_angle
 
 
-def gate_targets(pos, heading, gates, params, visible=None):
+def _sensed_and_aim(pos, gate, g, params, visible):
+    """Posts of gate g each agent senses (n, 2), and the point it would aim at (n, 2)."""
+    posts = gate.posts
+    sensed = np.linalg.norm(pos[:, None, :] - posts[None, :, :], axis=2) <= params.gate_sense_range
+    if visible is not None:
+        sensed &= visible[:, g]
+    aim = np.where(sensed[:, [0]], posts[0], posts[1])
+    aim[sensed.all(axis=1)] = gate.centre
+    return sensed, aim
+
+
+def gate_targets(pos, heading, gates, params, visible=None, previous=None, passed=None):
     """What each agent aims for: (gate index or -1, posts sensed of that gate
     (0 if none), target point (nan if none)).
 
     visible, if given, is an (n, n_gates, 2) bool array; posts not visible to
     an agent (e.g. occluded or outside a camera's view) are not sensed even in
-    range."""
+    range. With params.gate_sticky, previous (n,) is each agent's gate target
+    from the last step and passed (n_gates, n) whether it has passed each gate."""
     n = len(heading)
     gate_idx, posts_seen, target = np.full(n, -1), np.zeros(n, dtype=int), np.full((n, 2), np.nan)
     for g, gate in enumerate(gates):
-        posts = gate.posts
-        sensed = np.linalg.norm(pos[:, None, :] - posts[None, :, :], axis=2) <= params.gate_sense_range
-        if visible is not None:
-            sensed &= visible[:, g]
-        aim = np.where(sensed[:, [0]], posts[0], posts[1])
-        aim[sensed.all(axis=1)] = gate.centre
+        sensed, aim = _sensed_and_aim(pos, gate, g, params, visible)
         aims = sensed.any(axis=1) & _in_front(pos, heading, aim, params.gate_front_half_angle)
         if params.lone_post_aim == "centre":
             aim[:] = gate.centre
@@ -129,6 +140,16 @@ def gate_targets(pos, heading, gates, params, visible=None):
         gate_idx[aims] = g
         posts_seen[aims] = sensed[aims].sum(axis=1)
         target[aims] = aim[aims]
+    if params.gate_sticky and previous is not None:
+        for g, gate in enumerate(gates):
+            sensed, aim = _sensed_and_aim(pos, gate, g, params, visible)
+            if params.lone_post_aim == "centre":
+                aim[:] = gate.centre
+            before = (pos - np.asarray(gate.centre)) @ gate.normal < 0
+            keep = (previous == g) & ~passed[g] & before & sensed.any(axis=1)
+            gate_idx[keep] = g
+            posts_seen[keep] = sensed[keep].sum(axis=1)
+            target[keep] = aim[keep]
     return gate_idx, posts_seen, target
 
 

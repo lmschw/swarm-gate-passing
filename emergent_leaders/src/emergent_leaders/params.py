@@ -57,6 +57,18 @@ class ModelParams:
     # exploration_hold_off seconds after the last gate target is lost.
     pause_exploration_at_gates: bool = False
     exploration_hold_off: float = 0.0
+    # Sticky gate targets: an agent keeps its gate target until it crosses
+    # that gate's line, as long as it senses a post of it (no in-front check,
+    # no switch to a nearer target at the next gate).
+    gate_sticky: bool = False
+    # Agents with a gate target within this distance of that gate's centre
+    # stop aligning (0: never).
+    gate_loose_radius: float = 0.0
+    # Post avoidance: posts repel agents with the repulsive half of the
+    # proximal force, with spacing parameter post_avoid_sigma (0: off) and the
+    # distance measured from the post's edge, weighted post_avoid_weight * alpha.
+    post_avoid_sigma: float = 0.0
+    post_avoid_weight: float = 3.0
 
     # --- Leader tenure ---
     # The reference demotes once an agent has drawn 5 goal samples; the 5th is
