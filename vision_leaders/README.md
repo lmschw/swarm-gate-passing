@@ -292,6 +292,77 @@ poorly trained, off by about 25°, and the network then copies its own error
 it sees; it can't keep a target whose posts it no longer sees well, which so
 far doesn't show.
 
+**Generalisation.** `goalnet_r6_gateopts.pt` was trained on 4 m wide gates,
+winding courses of five gates 6–8 m apart with turns up to 90°, and slaloms
+with offsets up to 1.5 m. On other courses (rule and network both with the
+gate options; agents through every gate, runs with all 25 in brackets; 20
+random courses each, 10 starts for the fixed shapes):
+
+| course | rule | `goalnet_r6_gateopts.pt` | `goalnet_r6_varied.pt` | `goalnet_r6_varied_large.pt` | `goalnet_r6_gateopts.pt` vs teacher, teacher driving: bearing error median / 90th pct | near agreement where flagged |
+|---|---|---|---|---|---|---|
+| winding, as evaluated | 94% (9) | 77% (3) | 66% (0) | 65% (3) | 2.1° / 7.7° | 93% |
+| gates 3 m wide | 71% (0) | 47% (0) | 52% (0) | 49% (0) | | |
+| gates 2.5 m wide | 49% (0) | 25% (0) | 33% (0) | 34% (0) | 8.8° / 37° | 89% |
+| gates 2 m wide | 28% (0) | 4% (0) | 15% (0) | 12% (0) | | |
+| gates 5 m apart | 92% (7) | 43% (1) | 50% (1) | 50% (1) | 4.8° / 35° | 80% |
+| gates 10 m apart | 14% (1) | 13% (0) | 14% (0) | 13% (0) | | |
+| 10 gates | 90% (4) | 61% (0) | 61% (0) | 50% (0) | 2.3° / 8.7° | 93% |
+| turns up to 120° | 83% (2) | 66% (2) | 54% (1) | 53% (1) | 2.2° / 8.9° | 92% |
+| U-turn, 4 × 45° | 98% (6) | 93% (1) | 92% (0) | 90% (2) | | |
+| zigzag, ±60° | 96% (3) | 71% (0) | 50% (0) | 70% (0) | 2.5° / 9.5° | 90% |
+| slalom, 2.5 m offsets, 5 gates | 55% (0) | 0% (0) | 16% (0) | 8% (0) | 3.3° / 38° | 84% |
+
+Two of the limits are the base model's. Beyond the 6 m sensing range (gates
+10 m apart) the rule loses the course too, and narrow gates don't fit the
+swarm (25 agents about 1 m apart; the rule drops to 28% at 2 m). The
+network falls further behind in two ways. With narrow gates, close gates and
+wide slaloms, it misreads the scene: with the teacher driving, a tenth of its
+bearings are off by 35° or more, probably aiming at the wrong pair of posts.
+Broader training courses should fix that. On the zigzag, 10 gates and 120°
+turns it reads the scene as well as on its training courses, and loses
+agents in closed loop, gate by gate.
+
+`goalnet_r6_varied.pt` was trained on varied courses
+(`--varied-courses --duration 600 --bc-runs 60 --dagger-runs 30`: gates
+2.5–4 m wide and 5–8 m apart, slaloms of 3–5 gates offset up to 2.5 m,
+winding courses of 4–7 gates; about 2 h), `goalnet_r6_varied_large.pt` the
+same way with a larger network (`--channels 32 64 64 --hidden 256`: 1.24 M
+parameters against 0.16 M; about 4 h). The runs vary a lot: one standard
+error of a network's share through every gate is 5–12 points (rule 1–3,
+except 120° turns and 10 m spacing: 6–8). All networks ran the same courses
+and starts, so per course (paired difference ± standard error, points):
+
+| course | varied − 4 m | large − varied |
+|---|---|---|
+| winding, as evaluated | −10 ± 10 | −1 ± 12 |
+| gates 3 m wide | +6 ± 5 | −3 ± 3 |
+| gates 2.5 m wide | +9 ± 4 | +1 ± 4 |
+| gates 2 m wide | +11 ± 2 | −3 ± 3 |
+| gates 5 m apart | +6 ± 6 | +0 ± 7 |
+| 10 gates | −1 ± 11 | −11 ± 9 |
+| turns up to 120° | −12 ± 8 | −1 ± 11 |
+| zigzag, ±60° | −21 ± 20 | +20 ± 15 |
+| slalom, 2.5 m offsets, 5 gates | +16 ± 9 | −8 ± 13 |
+
+Varied courses help with narrow gates; nothing else is clear of the noise.
+On the default slalom all three get 98% (6–7 / 10 runs with all 25).
+
+The varied network fits its teacher worse offline (bearing error 90th
+percentile 22.6°, against 9.9°). Mostly not because the image doesn't show
+the teacher's target: with the teacher driving (winding, zigzag, 5 m
+spacing, 2.5 m gates, wide slalom; 10 runs each), 2–8% of its leads keep an
+earlier target where a fresh choice would pick another gate or none. On
+these both networks are far off (median 80–90°), mostly towards the fresh
+choice, but they hold only about 30% of the errors above 30°. The rest fall
+on fresh targets, which the image does determine; there the varied network
+gained where the 4 m one was weak (2.5 m gates: 3.4% against 11.4% of
+bearings off by more than 30°) and lost where it was strong (winding: 2.6%
+against 1.0%; zigzag: 3.3% against 1.2%). The larger network fits better
+(16.0°; 11.2° after behaviour cloning alone, before the harder DAgger states
+are added) but does no better on the courses. So neither the courses nor the
+network size close the gap to the rule, which holds everywhere outside the
+base model's own limits (10 m spacing): the losses come in closed loop.
+
 | suite | perception | through each gate | runs with > 50% through all |
 |---|---|---|---|
 | default slalom | centre rule | 98 / 96 / 91% | 10 / 10 |
@@ -398,6 +469,11 @@ python -m vision_leaders.evaluate models/goalnet_r6_gateopts.pt --rules centre $
 python -m vision_leaders.run --model models/goalnet_r6_gateopts.pt --lone-post-aim centre $G \
     --course winding --gates 5 --gate-spacing 7 --seed 9 --duration 430 --camera-agent 14 \
     --video models/goalnet_r6_gateopts_winding9.mp4   # 25 / 25 through every gate
+python -m vision_leaders.train --out models/goalnet_r6_varied_large.pt --lone-post-aim centre --max-turn 90 \
+    --duration 600 --varied-courses --bc-runs 60 --dagger-runs 30 --channels 32 64 64 --hidden 256 \
+    --save-data data/varied_r6 $G                                     # ~4 h; the data takes 5 GB
+python -m vision_leaders.train --out models/other_size.pt --lone-post-aim centre --channels 16 32 32 \
+    --hidden 128 --data data/varied_r6 --dagger-iters 0 $G            # another size on the same data
 ```
 
 `run.py` builds courses and starts like `emergent_leaders.run` (same seed,

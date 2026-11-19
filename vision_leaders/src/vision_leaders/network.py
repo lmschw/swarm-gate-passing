@@ -26,26 +26,29 @@ from .camera import CameraParams
 
 
 class GoalNet(nn.Module):
-    def __init__(self, cam=CameraParams(), memory=False, near=False):
+    def __init__(self, cam=CameraParams(), memory=False, near=False, channels=(16, 32, 32), hidden=64):
+        """channels: of the three convolutions; hidden: units of the hidden layer."""
         super().__init__()
         self.cam = cam
         self.memory, self.near = memory, near
+        self.config = dict(memory=memory, near=near, channels=tuple(channels), hidden=hidden)
+        c1, c2, c3 = channels
         step = cam.fov / cam.width
         columns = cam.fov / 2 - step * (np.arange(cam.width) + 0.5)
         self.register_buffer("column_bearing",
                              torch.tensor(columns, dtype=torch.float32).expand(1, 1, cam.height, cam.width).clone())
         self.features = nn.Sequential(
-            nn.Conv2d(4, 16, 3, padding=1), nn.ReLU(),
-            nn.Conv2d(16, 32, 3, stride=2, padding=1), nn.ReLU(),
-            nn.Conv2d(32, 32, 3, stride=2, padding=1), nn.ReLU(),
+            nn.Conv2d(4, c1, 3, padding=1), nn.ReLU(),
+            nn.Conv2d(c1, c2, 3, stride=2, padding=1), nn.ReLU(),
+            nn.Conv2d(c2, c3, 3, stride=2, padding=1), nn.ReLU(),
             nn.Flatten(),
         )
-        n_features = 32 * math.ceil(cam.height / 4) * math.ceil(cam.width / 4)
+        n_features = c3 * math.ceil(cam.height / 4) * math.ceil(cam.width / 4)
         if memory:
-            self.head = nn.Sequential(nn.Linear(n_features, 64), nn.ReLU(), nn.Linear(64, 1 + near))
-            self.bearing_head = nn.Sequential(nn.Linear(n_features + 3, 64), nn.ReLU(), nn.Linear(64, 2))
+            self.head = nn.Sequential(nn.Linear(n_features, hidden), nn.ReLU(), nn.Linear(hidden, 1 + near))
+            self.bearing_head = nn.Sequential(nn.Linear(n_features + 3, hidden), nn.ReLU(), nn.Linear(hidden, 2))
         else:
-            self.head = nn.Sequential(nn.Linear(n_features, 64), nn.ReLU(), nn.Linear(64, 3 + near))
+            self.head = nn.Sequential(nn.Linear(n_features, hidden), nn.ReLU(), nn.Linear(hidden, 3 + near))
 
     def forward(self, images, prev=None):
         """images: (b, 3, height, width) uint8; prev: (b, 3) float, with memory.
@@ -69,11 +72,12 @@ class GoalNet(nn.Module):
                 None if near is None else torch.sigmoid(near).numpy())
 
     def save(self, path):
-        torch.save({"cam": self.cam, "memory": self.memory, "near": self.near, "state": self.state_dict()}, path)
+        torch.save({"cam": self.cam, **self.config, "state": self.state_dict()}, path)
 
     @classmethod
     def load(cls, path):
         data = torch.load(path, weights_only=False)
-        net = cls(data["cam"], data.get("memory", False), data.get("near", False))
+        net = cls(data["cam"], data.get("memory", False), data.get("near", False), data.get("channels", (16, 32, 32)),
+                  data.get("hidden", 64))
         net.load_state_dict(data["state"])
         return net.eval()

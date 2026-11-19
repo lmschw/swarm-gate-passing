@@ -1,0 +1,6 @@
+slalom   rule (centre)                           : through [ 99 100 100]%  runs > 50% through all 10 / 10  agents through every gate 99%, all of them in 8 / 10
+slalom   models/goalnet_r6_varied.pt (threshold) : through [99 99 99]%  runs > 50% through all 10 / 10  agents through every gate 98%, all of them in 7 / 10  unsure q 9.4%
+slalom   models/goalnet_r6_varied_bc.pt (threshold): through [97 99 98]%  runs > 50% through all 10 / 10  agents through every gate 96%, all of them in 3 / 10  unsure q 10.4%
+winding  rule (centre)                           : through [ 99 100  97  99  98]%  runs > 50% through all 20 / 20  agents through every gate 94%, all of them in 9 / 20
+winding  models/goalnet_r6_varied.pt (threshold) : through [97 97 89 86 73]%  runs > 50% through all 15 / 20  agents through every gate 66%, all of them in 0 / 20  unsure q 12.1%
+winding  models/goalnet_r6_varied_bc.pt (threshold): through [96 87 74 67 44]%  runs > 50% through all 9 / 20  agents through every gate 37%, all of them in 1 / 20  unsure q 12.4%

@@ -109,6 +109,27 @@ def test_network_with_memory_and_near_output_round_trips(tmp_path):
     np.testing.assert_allclose(loaded.predict(images, prev)[2], near, rtol=1e-6)
 
 
+def test_a_larger_network_round_trips_with_its_size(tmp_path):
+    net = GoalNet(CAM, near=True, channels=(32, 64, 64), hidden=128).eval()
+    images = np.random.default_rng(0).integers(0, 256, (4, 3, CAM.height, CAM.width), dtype=np.uint8)
+    net.save(tmp_path / "net.pt")
+    loaded = GoalNet.load(tmp_path / "net.pt")
+    assert loaded.config == net.config
+    np.testing.assert_allclose(loaded.predict(images)[1], net.predict(images)[1], rtol=1e-6)
+
+
+def test_training_data_round_trips(tmp_path):
+    from vision_leaders.train import load_data, save_data
+    rng = np.random.default_rng(0)
+    data = (rng.integers(0, 256, (5, 3, CAM.height, CAM.width), dtype=np.uint8), rng.random((5, 3), dtype=np.float32),
+            rng.random(5) < 0.5, rng.random(5, dtype=np.float32), rng.random(5) < 0.5)
+    save_data(tmp_path / "data", data, next_seed=70)
+    loaded, seed = load_data(tmp_path / "data")
+    assert seed == 70
+    for a, b in zip(data, loaded):
+        np.testing.assert_array_equal(a, b)
+
+
 def test_previous_output_input_is_the_teachers_last_label_turned_with_the_agent():
     params = ModelParams(gate_sticky=True, gate_loose_radius=3.5)
     state = SwarmState.from_poses(np.array([[7.0, 0.0], [-10.0, 0.0]]), np.zeros(2))
