@@ -64,6 +64,9 @@ class ModelParams:
     # Agents with a gate target within this distance of that gate's centre
     # stop aligning (0: never).
     gate_loose_radius: float = 0.0
+    # Free gate leaders: agents with a gate target neither attract to nor align
+    # with their neighbours (the repulsion stays), so the goal term alone steers them.
+    gate_leader_free: bool = False
     # Post avoidance: posts repel agents with the repulsive half of the
     # proximal force, with spacing parameter post_avoid_sigma (0: off) and the
     # distance measured from the post's edge, weighted post_avoid_weight * alpha.

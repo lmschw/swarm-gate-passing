@@ -48,6 +48,11 @@ The gate options of emergent_leaders' ModelParams:
   gate's centre. Network leaders stop aligning when the network's near
   output reaches 0.5, so the network must have one;
 - post_avoid_sigma: motion only, as in emergent_leaders.
+
+With decide_every = k > 1, the network (or the teacher, if it drives)
+perceives only every k steps: images, labels and outputs are those of the
+last decision, and leaders keep its goal direction in the world frame until
+the next. Rendering only then makes the simulation several times faster.
 """
 import numpy as np
 
@@ -67,7 +72,7 @@ def _wrap(angle):
 
 class VisionSimulation(Simulation):
     def __init__(self, *args, camera=CameraParams(), net=None, teacher="full", visible_threshold=0.5,
-                 lead_threshold=0.5, goal_weighting="threshold", aim=None, **kwargs):
+                 lead_threshold=0.5, goal_weighting="threshold", aim=None, decide_every=1, **kwargs):
         if teacher not in TEACHERS:
             raise ValueError(f"teacher must be one of {TEACHERS}, got {teacher!r}")
         if goal_weighting not in GOAL_WEIGHTINGS:
@@ -80,6 +85,8 @@ class VisionSimulation(Simulation):
         if aim is not None and params.gate_sticky:
             raise ValueError("the tuned teacher (aim) has no sticky targets")
         self.goal_weighting = goal_weighting
+        self.decide_every = decide_every
+        self._held = None   # (gate_target, posts_seen, goal direction) of the last decision
         self.aim = aim
         self.teacher_target = None
         self._last = None   # (lead, bearing, heading) of the last output, for prev_input
@@ -91,6 +98,26 @@ class VisionSimulation(Simulation):
         super().__init__(*args, **kwargs)
 
     def perceive_gates(self):
+        if self._held is not None and self.step_count % self.decide_every:
+            return self.held_targets()
+        target, posts, aim = self.decide()
+        to_aim = aim - self.state.pos
+        self._held = (target, posts, np.arctan2(to_aim[:, 1], to_aim[:, 0]))
+        return target, posts, aim
+
+    def held_targets(self):
+        """The last decision's targets, with each leader's goal direction kept in the world frame."""
+        target, posts, direction = self._held
+        s = self.state
+        aim = np.where((target >= 0)[:, None], s.pos + np.column_stack([np.cos(direction), np.sin(direction)]), np.nan)
+        if self.net is not None:   # bookkeeping as in decide(): the first gate not passed yet
+            not_passed = np.isnan(self.gate_pass_time)
+            next_gate = np.where(not_passed.any(axis=0), not_passed.argmax(axis=0), len(self.gates) - 1)
+            target = np.where(target >= 0, next_gate, -1)
+        return target, posts, aim
+
+    def decide(self):
+        """Render, label and (with a network) predict; returns gate_targets' (target, posts_seen, aim point)."""
         s, p = self.state, self.params
         if self._last is None:
             self.prev_input = np.zeros((s.n, 3), dtype=np.float32)

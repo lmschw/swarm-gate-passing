@@ -52,6 +52,8 @@ def main(argv=None):
                        help="keep a gate target until crossing that gate's line, while a post of it is sensed")
     gates.add_argument("--loose-radius", type=float, default=0.0,
                        help="agents with a gate target this close to its centre stop aligning [m]")
+    gates.add_argument("--free-leaders", action="store_true",
+                       help="gate leaders neither attract to nor align with neighbours (repulsion stays)")
     gates.add_argument("--post-avoid", type=float, default=0.0, metavar="SIGMA",
                        help="posts repel agents within sqrt(2) SIGMA of their edge [m]")
     gates.add_argument("--post-avoid-weight", type=float, default=3.0, help="post avoidance weight, times alpha")
@@ -80,6 +82,7 @@ def main(argv=None):
 
     overrides = {"local_alignment": args.local_alignment, "lone_post_aim": args.lone_post_aim,
                  "gate_sticky": args.sticky_targets, "gate_loose_radius": args.loose_radius,
+                 "gate_leader_free": args.free_leaders,
                  "post_avoid_sigma": args.post_avoid, "post_avoid_weight": args.post_avoid_weight}
     if args.sigma_leader is not None:
         overrides["sigma_leader"] = args.sigma_leader

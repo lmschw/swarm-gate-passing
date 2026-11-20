@@ -363,6 +363,58 @@ are added) but does no better on the courses. So neither the courses nor the
 network size close the gap to the rule, which holds everywhere outside the
 base model's own limits (10 m spacing): the losses come in closed loop.
 
+**RL fine-tuning** (`rl.py`). Since the losses come in closed loop, the
+network was fine-tuned in closed loop with PPO, starting from
+`goalnet_r6_gateopts.pt`. The network decides every 10 steps (0.5 s;
+`--decide-every`, also in `evaluate.py` and `run.py`: in between, leaders
+keep their goal direction in the world frame; this costs nothing on the
+winding suite, 78% against 77%, and makes evaluation about 10 times faster).
+It acts stochastically: an agent leads with the predicted probability, aims
+along the predicted bearing plus Gaussian noise (learned standard deviation,
+from 5.7°) and is near with the predicted near probability. Each agent gets
++1 per gate passed and −1 per gate missed (crossed outside the posts, or
+skipped by passing a later gate), −1 at the end for each gate neither passed
+nor missed, plus the swarm's mean reward. A critic on privileged state (the
+next two gates in the body frame, the share of the swarm through the next
+one, the agent's offset from the centroid, its last decision, time and gates
+left) gives GAE advantages. Each iteration runs 20 episodes on training
+courses (about 360,000 decisions).
+
+The first run (`--lr 1e-4`, 30 iterations, about 75 min; log
+`models/rl_r6.log`) peaked on the 20 winding evaluation courses at iteration
+6 (84% through every gate, against 78% at the start), then got steadily
+worse: 70% at iteration 9, 43% at iteration 30, with the return on the
+training courses falling too (about 7 to 5). The KL check only ran at the
+end of each epoch (about 350 minibatch steps), so updates often overshot the
+KL target several times over; `rl.py` now stops an update mid-epoch. On 60
+fresh winding courses (seeds 100–159, paired per course against the starting
+network) the selected checkpoint is no better:
+
+| network | through each gate | agents through every gate | runs with all 25 | vs start |
+|---|---|---|---|---|
+| `goalnet_r6_gateopts.pt` (start) | 97 / 96 / 94 / 93 / 90% | 83.5 ± 3.2% | 9 / 60 | |
+| `goalnet_r6_rl_it3.pt` | 97 / 93 / 90 / 82 / 81% | 76.3% | 8 / 60 | −7.3 ± 4.7 |
+| `goalnet_r6_rl_it6.pt` (= `goalnet_r6_rl.pt`) | 97 / 96 / 97 / 96 / 92% | 83.2% | 8 / 60 | −0.3 ± 3.2 |
+| `goalnet_r6_rl_it9.pt` | 97 / 95 / 93 / 92 / 90% | 81.6% | 10 / 60 | −1.9 ± 3.5 |
+| `goalnet_r6_rl_it30.pt` | 92 / 81 / 68 / 56 / 51% | 37.8% | 1 / 60 | −45.7 ± 4.9 |
+
+Its 84% on the evaluation courses came from picking the best of ten
+checkpoints on those same courses.
+
+A second run with smaller steps (`--lr 3e-5`, the KL check mid-epoch; log
+`models/rl2_r6.log`, models `goalnet_r6_rl2*.pt`) stayed stable (KL at or
+below its target, under 4% of ratios clipped, return flat at 6–8) but didn't
+improve either: on the evaluation courses 70–82% through every gate, against
+78% at the start, and on the 60 fresh courses iteration 12 (its best on the
+evaluation courses) got 77.6% (−5.9 ± 4.0 points against the start),
+iteration 24 80.7% (−2.8 ± 4.1) and iteration 30 79.9% (−3.7 ± 3.7). The
+signal is weak against the noise: the share of agents through every gate in
+an iteration's 20 training episodes ranges from 74% to 95% with the courses
+drawn, more than any trend in the return. So with this reward and batch size,
+RL doesn't beat imitation; larger batches, rewarding agents only for their
+own gates, or a cloning loss on the teacher's data to anchor the network
+would be the next things to try.
+
 | suite | perception | through each gate | runs with > 50% through all |
 |---|---|---|---|
 | default slalom | centre rule | 98 / 96 / 91% | 10 / 10 |
@@ -474,6 +526,9 @@ python -m vision_leaders.train --out models/goalnet_r6_varied_large.pt --lone-po
     --save-data data/varied_r6 $G                                     # ~4 h; the data takes 5 GB
 python -m vision_leaders.train --out models/other_size.pt --lone-post-aim centre --channels 16 32 32 \
     --hidden 128 --data data/varied_r6 --dagger-iters 0 $G            # another size on the same data
+python -m vision_leaders.rl --init models/goalnet_r6_gateopts.pt --out models/goalnet_r6_rl.pt \
+    --lone-post-aim centre $G                                         # PPO fine-tuning, ~75 min; --lr 3e-5 is stabler
+python -m vision_leaders.evaluate models/goalnet_r6_rl.pt --rules centre --decide-every 10 $G
 ```
 
 `run.py` builds courses and starts like `emergent_leaders.run` (same seed,

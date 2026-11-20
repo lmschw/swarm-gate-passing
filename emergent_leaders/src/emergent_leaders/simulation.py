@@ -218,6 +218,8 @@ class Simulation:
         local_alignment). Agents near_gate align with nobody. Override to
         change it."""
         loose = self.near_gate()
+        if self.params.gate_leader_free:
+            loose = loose | self._gate_leaders()
         if not loose.any():
             return None
         mask = np.isfinite(geometry[0]) if self.params.local_alignment else np.ones((self.state.n,) * 2, bool)
@@ -227,8 +229,14 @@ class Simulation:
     def attraction(self):
         """Factor on the attraction to neighbours (0 keeps only the
         repulsion), per agent (n,) or per pair (n, n), or None for full
-        attraction. Override to change it."""
+        attraction. Gate leaders get none with gate_leader_free. Override to
+        change it."""
+        if self.params.gate_leader_free:
+            return np.where(self._gate_leaders(), 0.0, 1.0)
         return None
+
+    def _gate_leaders(self):
+        return self.state.is_leader & (self.state.gate_target >= 0)
 
     def extra_force(self):
         """Per-agent (f_x, f_y) in the body frame added to the virtual force,

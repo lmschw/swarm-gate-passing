@@ -32,6 +32,7 @@ def main(argv=None):
     parser.add_argument("--lone-post-aim", choices=["post", "centre"], default="post",
                         help="the rule's aim when it senses one post of a gate")
     parser.add_argument("--aim", default=None, help="tuned teacher (JSON from evolve.py) instead of the rule")
+    parser.add_argument("--decide-every", type=int, default=1, help="perceive every k steps (k * 0.05 s)")
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--gates", type=int, default=3)
     parser.add_argument("--course", choices=["slalom", "winding"], default="slalom")
@@ -65,7 +66,7 @@ def main(argv=None):
     kwargs = {} if net is None else {"camera": net.cam}
     sim = VisionSimulation(params=params, state=start(args.seed, heading_deg=args.start_heading), gates=gates,
                            explore=False, seed=args.seed, net=net, teacher=args.teacher, check_course=False,
-                           goal_weighting=args.goal_weighting, aim=aim,
+                           goal_weighting=args.goal_weighting, aim=aim, decide_every=args.decide_every,
                            **kwargs)
     frames = [camera_frame(sim, args.camera_agent)] if args.video else None
 

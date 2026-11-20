@@ -158,6 +158,18 @@ def test_agents_near_their_gate_stop_aligning():
                       check_course=False).alignment(sim._geometry()) is None
 
 
+def test_free_gate_leaders_neither_attract_nor_align():
+    params = replace(P, gate_leader_free=True)
+    state = SwarmState.from_poses(np.array([[8.0, 0.0], [3.0, 0.0], [3.0, 1.0]]), np.zeros(3))
+    sim = Simulation(params=params, state=state, gates=[GATE], explore=False, check_course=False)
+    assert list(sim.state.gate_target) == [0, -1, -1] and list(sim.state.is_leader) == [True, False, False]
+    mask = sim.alignment(sim._geometry())
+    assert not mask[0].any() and mask[1:].all()
+    np.testing.assert_array_equal(sim.attraction(), [0.0, 1.0, 1.0])
+    plain = Simulation(params=P, state=state, gates=[GATE], explore=False, check_course=False)
+    assert plain.attraction() is None and plain.alignment(plain._geometry()) is None
+
+
 def test_post_avoidance_pushes_agents_away_from_close_posts_only():
     params = replace(P, post_avoid_sigma=0.3)
     post = GATE.posts[0]

@@ -1,0 +1,14 @@
+  eval winding: through [98 98 93 93 83]%, agents through every gate 78.4%, all 25 in 3 / 20
+iteration 1: 366450 decisions, return 6.86, agents through every gate 87.6% (sampled), critic loss 0.011, critic only (45 s collecting, 6 s updating)
+iteration 2: 338700 decisions, return 7.32, agents through every gate 93.4% (sampled), critic loss 0.004, critic only (35 s collecting, 3 s updating)
+iteration 3: 356750 decisions, return 6.55, agents through every gate 85.0% (sampled), critic loss 0.008, 698 steps, KL 0.0048, clipped 2.2%, entropy -0.589, bearing std 5.7 deg (37 s collecting, 160 s updating)
+  eval winding: through [97 99 93 89 82]%, agents through every gate 77.8%, all 25 in 2 / 20
+iteration 4: 386700 decisions, return 6.34, agents through every gate 82.4% (sampled), critic loss 0.008, 756 steps, KL 0.0035, clipped 1.5%, entropy -0.506, bearing std 5.7 deg (43 s collecting, 648 s updating)
+iteration 5: 372625 decisions, return 5.08, agents through every gate 73.6% (sampled), critic loss 0.007, 728 steps, KL 0.0032, clipped 1.6%, entropy -0.471, bearing std 5.7 deg (44 s collecting, 168 s updating)
+iteration 6: 409000 decisions, return 6.20, agents through every gate 81.2% (sampled), critic loss 0.011, 441 steps, KL 0.0253, clipped 2.0%, entropy -0.497, bearing std 5.7 deg (43 s collecting, 103 s updating)
+  eval winding: through [97 98 93 89 84]%, agents through every gate 79.2%, all 25 in 4 / 20
+iteration 7: 324575 decisions, return 7.03, agents through every gate 95.6% (sampled), critic loss 0.005, 544 steps, KL 0.0221, clipped 1.8%, entropy -0.598, bearing std 5.7 deg (40 s collecting, 115 s updating)
+iteration 8: 329900 decisions, return 5.91, agents through every gate 89.8% (sampled), critic loss 0.009, 646 steps, KL 0.0052, clipped 1.5%, entropy -0.543, bearing std 5.7 deg (37 s collecting, 144 s updating)
+iteration 9: 354600 decisions, return 5.23, agents through every gate 77.6% (sampled), critic loss 0.012, 694 steps, KL 0.0022, clipped 1.7%, entropy -0.515, bearing std 5.7 deg (41 s collecting, 161 s updating)
+  eval winding: through [97 99 91 89 85]%, agents through every gate 78.6%, all 25 in 4 / 20
+iteration 10: 382000 decisions, return 7.67, agents through every gate 92.6% (sampled), critic loss 0.006, 748 steps, KL 0.0029, clipped 2.1%, entropy -0.567, bearing std 5.6 deg (45 s collecting, 173 s updating)

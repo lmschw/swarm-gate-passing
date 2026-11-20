@@ -37,7 +37,7 @@ SUITES = {"slalom": ("slalom", 3, range(10), 320.0), "winding": ("winding", 5, r
 
 
 def run_one(args):
-    model, weighting, suite, seed, aim, overrides = args
+    model, weighting, suite, seed, aim, overrides, decide_every = args
     torch.set_num_threads(1)
     kind, n_gates, _, duration = SUITES[suite]
     # a rule's weighting slot holds its lone-post aim
@@ -55,7 +55,7 @@ def run_one(args):
         sim = Simulation(**common)
     else:
         net = GoalNet.load(model)
-        sim = VisionSimulation(net=net, camera=net.cam, goal_weighting=weighting, **common)
+        sim = VisionSimulation(net=net, camera=net.cam, goal_weighting=weighting, decide_every=decide_every, **common)
     for _ in range(round(duration / params.dt)):
         sim.step()
         if model != "rule":
@@ -66,11 +66,11 @@ def run_one(args):
 
 
 def evaluate(models, weightings=("threshold",), suites=tuple(SUITES), workers=20, rules=("post",), aim=None,
-             overrides=None):
+             overrides=None, decide_every=1):
     if "aim" in rules and aim is None:
         raise ValueError("the 'aim' rule needs an aim")
     policies = [("rule", r) for r in rules] + [(m, w) for m in models if m != "rule" for w in weightings]
-    jobs = [(m, w, s, seed, aim, overrides or {}) for m, w in policies for s in suites for seed in SUITES[s][2]]
+    jobs = [(m, w, s, seed, aim, overrides or {}, decide_every) for m, w in policies for s in suites for seed in SUITES[s][2]]
     with Pool(workers) as pool:
         return pool.map(run_one, jobs)
 
@@ -84,10 +84,12 @@ def main(argv=None):
                         help="lone-post aims of the rule runs, or the tuned teacher (aim)")
     parser.add_argument("--aim", default=None, help="tuned teacher (JSON from evolve.py)")
     add_gate_options(parser)
+    parser.add_argument("--decide-every", type=int, default=1, help="networks perceive every k steps (k * 0.05 s)")
     parser.add_argument("--workers", type=int, default=20)
     args = parser.parse_args(argv)
     aim = Aim.load(args.aim) if args.aim else None
-    out = evaluate(args.models, args.goal_weighting, args.suites, args.workers, args.rules, aim, gate_overrides(args))
+    out = evaluate(args.models, args.goal_weighting, args.suites, args.workers, args.rules, aim, gate_overrides(args),
+                   args.decide_every)
     policies = list(dict.fromkeys((o[0], o[1]) for o in out))
     for suite in args.suites:
         for m, w in policies:
